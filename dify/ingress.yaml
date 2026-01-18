@@ -1,0 +1,33 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dify-ingress
+  namespace: dify
+  labels:
+    app: dify
+    component: ingress
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    traefik.ingress.kubernetes.io/service.serversscheme: http
+    traefik.ingress.kubernetes.io/service.passhostheader: "true"
+spec:
+  ingressClassName: kommander-traefik
+  rules:
+  - http:
+      paths:
+      # Dify Web UI（フロントエンド）
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: dify-web-svc
+            port:
+              number: 3000
+      # Dify API
+      - path: /api
+        pathType: Prefix
+        backend:
+          service:
+            name: dify-api-svc
+            port:
+              number: 5001

@@ -1,0 +1,92 @@
+# ==================================================
+# Global
+# ==================================================
+global:
+  image:
+    tag: latest
+
+# ==================================================
+# Ingress（Helmでは使わない：外だし）
+# ==================================================
+ingress:
+  enabled: false
+
+# ==================================================
+# Web / API / Worker
+# ==================================================
+web:
+  replicaCount: 1
+
+api:
+  replicaCount: 1
+
+worker:
+  replicaCount: 1
+
+# ==================================================
+# PostgreSQL（内蔵）
+# ==================================================
+postgresql:
+  enabled: true
+  global:
+    storageClass: nutanix-volume
+    postgresql:
+      auth:
+        postgresPassword: "dify"
+        database: "dify"
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+
+# ==================================================
+# Redis（内蔵・認証なし）
+# ==================================================
+redis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: false
+  master:
+    persistence:
+      enabled: true
+      size: 5Gi
+
+# ==================================================
+# Vector DB : Weaviate
+# ★ nil pointer 対策を完全定義
+# ==================================================
+weaviate:
+  enabled: true
+  authentication:
+    apikey:
+      enabled: false
+  persistence:
+    enabled: true
+    size: 20Gi
+
+# ==================================================
+# Storage 設定
+# ==================================================
+# NKP標準ストレージ: nutanix-volume または nutanix-nfs
+# デフォルト: nutanix-volume（ReadWriteOnce）
+# NFSストレージが必要な場合は nutanix-nfs（ReadWriteMany）を指定
+storageClass: nutanix-volume
+
+# ==================================================
+# Persistence 設定（API/Worker用）
+# ==================================================
+# ReadWriteMany access mode required for `api` and `worker`
+persistence:
+  type: "local"
+  local:
+    mountPath: "/app/api/storage"
+    annotations:
+      helm.sh/resource-policy: keep
+    persistentVolumeClaim:
+      existingClaim: ""
+      hostPath: "/data/dify"
+      storageClass: nutanix-nfs  # ReadWriteManyが必要なのでnutanix-nfs
+      accessModes: ReadWriteMany
+      size: 5Gi
+      subPath: ""

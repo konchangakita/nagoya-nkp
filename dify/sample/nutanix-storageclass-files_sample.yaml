@@ -1,0 +1,20 @@
+allowVolumeExpansion: true
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+    name: nutanix-nfs
+provisioner: csi.nutanix.com
+parameters:
+    nfsServerName: labFS
+    nfsServer: 10.55.1.39
+    dynamicProv: ENABLED
+    storageType: NutanixFiles
+    squashType: root-squash
+    csi.storage.k8s.io/node-publish-secret-name: nutanix-csi-credentials-files
+    csi.storage.k8s.io/node-publish-secret-namespace: ntnx-system
+    csi.storage.k8s.io/controller-expand-secret-name: nutanix-csi-credentials-files
+    csi.storage.k8s.io/controller-expand-secret-namespace: ntnx-system
+    csi.storage.k8s.io/provisioner-secret-name: nutanix-csi-credentials-files
+    csi.storage.k8s.io/provisioner-secret-namespace: ntnx-system
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
