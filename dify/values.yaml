@@ -51,6 +51,39 @@ redis:
     persistence:
       enabled: true
       size: 5Gi
+      storageClass: nutanix-volume
+
+# ==================================================
+# External Redis（無効化：内蔵Redisを使用）
+# ==================================================
+externalRedis:
+  enabled: false
+
+# ==================================================
+# Gateway（無効化：Ingressを使用するため不要）
+# ==================================================
+gateway:
+  replicas: 0
+
+# ==================================================
+# Plugin Manager（一時的に無効化：復旧時はreplicas: 1に戻す）
+# ==================================================
+plugin_manager:
+  enabled: true  # 設定は残しておく（復旧用）
+  replicas: 0    # 無効化：復旧時は1に戻す
+
+# ==================================================
+# Plugin Connector（一時的に無効化：復旧時はreplicas: 1に戻す）
+# ==================================================
+plugin_connector:
+  replicas: 0    # 無効化：復旧時は1に戻す
+
+# ==================================================
+# Plugin Daemon（一時的に無効化：復旧時はreplicas: 1に戻す）
+# ==================================================
+plugin_daemon:
+  enabled: true  # 設定は残しておく（復旧用）
+  replicas: 0    # 無効化：復旧時は1に戻す
 
 # ==================================================
 # Vector DB : Weaviate
@@ -64,6 +97,8 @@ weaviate:
   persistence:
     enabled: true
     size: 20Gi
+  storage:
+    storageClassName: nutanix-volume
 
 # ==================================================
 # Storage 設定
@@ -85,7 +120,6 @@ persistence:
       helm.sh/resource-policy: keep
     persistentVolumeClaim:
       existingClaim: ""
-      hostPath: "/data/dify"
       storageClass: nutanix-nfs  # ReadWriteManyが必要なのでnutanix-nfs
       accessModes: ReadWriteMany
       size: 5Gi
