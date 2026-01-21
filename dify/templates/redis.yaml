@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-dify-redis-master-0
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ required "redis.persistence.size is required" .Values.redis.persistence.size }}
+  storageClassName: {{ required "storage.storageClassName is required" .Values.storage.storageClassName }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dify-redis-master
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dify-redis-master
+  template:
+    metadata:
+      labels:
+        app: dify-redis-master
+    spec:
+      containers:
+        - name: redis
+          image: redis:7
+          args: ["redis-server", "--appendonly", "yes"]
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: data-dify-redis-master-0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-redis-master
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: dify-redis-master
+  ports:
+    - port: 6379
+      targetPort: 6379
+

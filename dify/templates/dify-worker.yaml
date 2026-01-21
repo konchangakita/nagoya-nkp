@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: dify-worker
-          image: "{{ required "images.dify.repository is required" .Values.images.dify.repository }}:{{ required "images.dify.tag is required" .Values.images.dify.tag }}"
+          image: "{{ required "images.worker.repository is required" .Values.images.worker.repository }}:{{ required "images.worker.tag is required" .Values.images.worker.tag }}"
           envFrom:
             - secretRef:
                 name: dify-secrets
@@ -24,6 +24,16 @@ spec:
               value: "{{ include "dify.externalURL" . }}"
             - name: CONSOLE_URL
               value: "{{ include "dify.externalURL" . }}"
+            - name: CONSOLE_API_URL
+              value: "{{ include "dify.externalURL" . }}/console/api"
+            - name: CONSOLE_WEB_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: APP_WEB_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: SERVICE_API_URL
+              value: "{{ include "dify.externalURL" . }}/v1"
+            - name: FILES_URL
+              value: "{{ include "dify.externalURL" . }}/files"
             # PostgreSQL
             - name: DB_HOST
               value: "dify-postgresql"
@@ -53,5 +63,22 @@ spec:
               value: "8080"
             - name: WEAVIATE_SCHEME
               value: "http"
-          # TODO: キューやバックグラウンド処理用のENVを後続で追加
+            # Storage
+            - name: STORAGE_TYPE
+              value: "opendal"
+            - name: OPENDAL_SCHEME
+              value: "fs"
+            - name: OPENDAL_FS_ROOT
+              value: "/storage"
+          volumeMounts:
+            {{- if .Values.dify.fileStorage.enabled }}
+            - name: filestorage
+              mountPath: /storage
+            {{- end }}
+      volumes:
+        {{- if .Values.dify.fileStorage.enabled }}
+        - name: filestorage
+          persistentVolumeClaim:
+            claimName: dify-filestorage
+        {{- end }}
 

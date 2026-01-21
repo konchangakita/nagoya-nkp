@@ -8,11 +8,47 @@ spec:
   rules:
     - http:
         paths:
-          - path: {{ required "expose.path is required" .Values.expose.path }}
+          # API系（console）
+          - path: /console/api
+            pathType: Prefix
+            backend:
+              service:
+                name: dify-api
+                port:
+                  number: 5001
+
+          # API系（public）
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: dify-api
+                port:
+                  number: 5001
+
+          # ★追加：OpenAPI/LLMアプリ系で使うことが多い
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: dify-api
+                port:
+                  number: 5001
+
+          # ★追加：アップロード/生成物など
+          - path: /files
+            pathType: Prefix
+            backend:
+              service:
+                name: dify-api
+                port:
+                  number: 5001
+
+          # Web（最後に）
+          - path: /
             pathType: Prefix
             backend:
               service:
                 name: dify-web
                 port:
                   number: 80
-

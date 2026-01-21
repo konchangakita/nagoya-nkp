@@ -5,14 +5,10 @@ type: application
 version: 0.1.0
 appVersion: "1.11.4"
 dependencies:
-  - name: postgresql
-    version: 15.x.x
-    repository: https://charts.bitnami.com/bitnami
-    condition: postgresql.enabled
-  - name: redis
-    version: 19.x.x
-    repository: https://charts.bitnami.com/bitnami
-    condition: redis.enabled
+  - name: traefik
+    version: "*"
+    repository: https://traefik.github.io/charts
+    condition: expose.traefik.enabled
   - name: weaviate
     version: "*"
     repository: https://weaviate.github.io/weaviate-helm

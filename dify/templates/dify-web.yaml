@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: dify-web
-          image: "{{ required "images.dify.repository is required" .Values.images.dify.repository }}:{{ required "images.dify.tag is required" .Values.images.dify.tag }}"
+          image: "{{ required "images.web.repository is required" .Values.images.web.repository }}:{{ required "images.web.tag is required" .Values.images.web.tag }}"
           envFrom:
             - secretRef:
                 name: dify-secrets
@@ -24,11 +24,23 @@ spec:
               value: "{{ include "dify.externalURL" . }}"
             - name: CONSOLE_URL
               value: "{{ include "dify.externalURL" . }}"
+            - name: APP_API_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: CONSOLE_API_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: CONSOLE_WEB_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: APP_WEB_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: SERVICE_API_URL
+              value: "{{ include "dify.externalURL" . }}/v1"
+            - name: FILES_URL
+              value: "{{ include "dify.externalURL" . }}/files"
           ports:
-            - containerPort: 80
+            - containerPort: 3000
           readinessProbe:
             tcpSocket:
-              port: 80
+              port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
           # リソースやlivenessProbe等は後続で調整
@@ -44,5 +56,5 @@ spec:
     app: dify-web
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: 3000
 

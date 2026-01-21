@@ -3,6 +3,8 @@ kind: Deployment
 metadata:
   name: dify-api
   namespace: {{ .Release.Namespace }}
+  labels:
+    app: dify-api
 spec:
   replicas: 1
   selector:
@@ -13,17 +15,38 @@ spec:
       labels:
         app: dify-api
     spec:
+      ########################################
+      # Note: DB Migration is handled by dedicated Job (db-migration-job.yaml)
+      # initContainer から migration を外し、Job に一本化
+      # upgrade_db() は exit code を返さず危険なため使用しない
+      ########################################
+      # Main Container: Dify API
+      ########################################
       containers:
         - name: dify-api
-          image: "{{ required "images.dify.repository is required" .Values.images.dify.repository }}:{{ required "images.dify.tag is required" .Values.images.dify.tag }}"
+          image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ required "images.api.tag is required" .Values.images.api.tag }}"
           envFrom:
             - secretRef:
                 name: dify-secrets
           env:
+            # Note: MIGRATION_ENABLED は false に設定（Job で migration を実行するため）
+            # upgrade_db() は exit code を返さず危険なため使用しない
+            - name: MIGRATION_ENABLED
+              value: "false"
             - name: SERVER_URL
               value: "{{ include "dify.externalURL" . }}"
             - name: CONSOLE_URL
               value: "{{ include "dify.externalURL" . }}"
+            - name: CONSOLE_API_URL
+              value: "{{ include "dify.externalURL" . }}/console/api"
+            - name: CONSOLE_WEB_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: APP_WEB_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: SERVICE_API_URL
+              value: "{{ include "dify.externalURL" . }}/v1"
+            - name: FILES_URL
+              value: "{{ include "dify.externalURL" . }}/files"
             # PostgreSQL
             - name: DB_HOST
               value: "dify-postgresql"
@@ -53,12 +76,41 @@ spec:
               value: "8080"
             - name: WEAVIATE_SCHEME
               value: "http"
+            # Storage
+            - name: STORAGE_TYPE
+              value: "opendal"
+            - name: OPENDAL_SCHEME
+              value: "fs"
+            - name: OPENDAL_FS_ROOT
+              value: "/storage"
           ports:
             - containerPort: 5001
+          volumeMounts:
+            {{- if .Values.dify.fileStorage.enabled }}
+            - name: filestorage
+              mountPath: /storage
+            {{- end }}
           readinessProbe:
             tcpSocket:
               port: 5001
             initialDelaySeconds: 10
             periodSeconds: 10
-          # TODO: DB/Redis/Weaviate接続等のENVは後続で追加
-
+      volumes:
+        {{- if .Values.dify.fileStorage.enabled }}
+        - name: filestorage
+          persistentVolumeClaim:
+            claimName: dify-filestorage
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-api
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: dify-api
+  ports:
+    - port: 5001
+      targetPort: 5001

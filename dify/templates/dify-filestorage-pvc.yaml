@@ -1,0 +1,14 @@
+{{- if .Values.dify.fileStorage.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: dify-filestorage
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ required "dify.fileStorage.size is required" .Values.dify.fileStorage.size }}
+  storageClassName: {{ if .Values.dify.fileStorage.storageClass }}{{ .Values.dify.fileStorage.storageClass }}{{ else }}nutanix-nfs{{ end }}
+{{- end }}

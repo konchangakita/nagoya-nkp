@@ -1,14 +1,33 @@
 expose:
-  ingressClassName: "" # required
-  path: ""             # required (e.g. /dify)
+  ingressClassName: "" # required (e.g. dify-traefik)
+  path: "/"            # fixed to root path (/)
+  traefik:
+    enabled: true      # Enable dedicated Traefik Ingress Controller
+    # Traefik subchart values (passed to traefik subchart)
+    service:
+      type: LoadBalancer
+    ingressClass:
+      enabled: true
+      name: dify-traefik
+      isDefaultClass: false
+    dashboard:
+      enabled: false
+    gateway:
+      enabled: false   # Disable Gateway API (CRD conflict with existing)
 
 external:
   scheme: ""           # required (e.g. https)
   host: ""             # required (LB IP or DNS)
 
 images:
-  dify:
-    repository: ""     # required (e.g. langgenius/dify)
+  web:
+    repository: ""     # required (e.g. langgenius/dify-web)
+    tag: ""            # required (e.g. 1.11.4)
+  api:
+    repository: ""     # required (e.g. langgenius/dify-api)
+    tag: ""            # required (e.g. 1.11.4)
+  worker:
+    repository: ""     # required (e.g. langgenius/dify-api)
     tag: ""            # required (e.g. 1.11.4)
 
 secrets:
@@ -20,6 +39,8 @@ storage:
 
 postgresql:
   enabled: true
+  image:
+    tag: "16"          # bitnami/postgresql:16
   persistence:
     size: ""           # required (e.g. 20Gi)
   auth:
@@ -29,6 +50,8 @@ postgresql:
 
 redis:
   enabled: true
+  image:
+    tag: "7.2"         # bitnami/redis:7.2
   persistence:
     size: ""           # required (e.g. 8Gi)
   auth:
@@ -36,6 +59,10 @@ redis:
 
 weaviate:
   enabled: true
+  service:
+    type: ClusterIP    # ClusterIP is sufficient (no external access needed)
+  grpcService:
+    type: ClusterIP    # gRPC service should also be ClusterIP (no external access needed)
   persistence:
     enabled: true
     size: ""           # required (e.g. 50Gi)
@@ -45,4 +72,5 @@ dify:
   fileStorage:
     enabled: true
     size: ""           # required (e.g. 20Gi)
+    storageClass: ""  # optional, defaults to nutanix-nfs if empty
 

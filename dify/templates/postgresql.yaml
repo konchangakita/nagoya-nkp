@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-dify-postgresql-0
+  namespace: {{ .Release.Namespace }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ required "postgresql.persistence.size is required" .Values.postgresql.persistence.size }}
+  storageClassName: {{ required "storage.storageClassName is required" .Values.storage.storageClassName }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: dify-postgresql
+  namespace: {{ .Release.Namespace }}
+spec:
+  serviceName: dify-postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dify-postgresql
+  template:
+    metadata:
+      labels:
+        app: dify-postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: postgres:16
+          env:
+            - name: POSTGRES_USER
+              value: {{ required "postgresql.auth.username is required" .Values.postgresql.auth.username }}
+            - name: POSTGRES_PASSWORD
+              value: {{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}
+            - name: POSTGRES_DB
+              value: {{ required "postgresql.auth.database is required" .Values.postgresql.auth.database }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: data-dify-postgresql-0
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-postgresql
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: ClusterIP
+  selector:
+    app: dify-postgresql
+  ports:
+    - port: 5432
+      targetPort: 5432
+

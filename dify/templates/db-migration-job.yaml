@@ -1,0 +1,160 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: dify-db-migration
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: dify
+    component: db-migration
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 86400  # 24時間後に自動削除（競合防止）
+  template:
+    metadata:
+      labels:
+        app: {{ include "dify.name" . }}
+        component: db-migration
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: migrate
+          image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ required "images.api.tag is required" .Values.images.api.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              echo "=== [$(date +%Y-%m-%d\ %H:%M:%S)] Starting database migration (Job) ==="
+              
+              # コンテナ内の実パス確認
+              echo "=== [$(date +%Y-%m-%d\ %H:%M:%S)] Checking container paths ==="
+              pwd
+              ls -la /app || true
+              ls -la /app/api || true
+              
+              if [ ! -d "/app/api" ]; then
+                echo "❌ [$(date +%Y-%m-%d\ %H:%M:%S)] /app/api directory not found"
+                exit 1
+              fi
+              
+              echo "DB_HOST=${DB_HOST}"
+              echo "DB_PORT=${DB_PORT}"
+              echo "DB_USERNAME=${DB_USERNAME}"
+              echo "DB_DATABASE=${DB_DATABASE}"
+              echo "DB_PASSWORD length: ${#DB_PASSWORD}"
+              
+              cd /app/api
+              export FLASK_APP=app.py
+              
+              # flask db upgrade が使えるか事前確認
+              echo "=== [$(date +%Y-%m-%d\ %H:%M:%S)] Verifying flask db command availability ==="
+              if ! python -m flask --help > /dev/null 2>&1; then
+                echo "❌ [$(date +%Y-%m-%d\ %H:%M:%S)] flask command not available"
+                exit 1
+              fi
+              
+              if ! python -m flask db --help > /dev/null 2>&1; then
+                echo "❌ [$(date +%Y-%m-%d\ %H:%M:%S)] flask db command not available"
+                exit 1
+              fi
+              
+              echo "✅ [$(date +%Y-%m-%d\ %H:%M:%S)] flask db command is available"
+              
+              # 既存の DB 接続コードを使って検証（psycopg2 を直接使わない）
+              echo "=== [$(date +%Y-%m-%d\ %H:%M:%S)] Testing database connection using Dify's existing code ==="
+              python -c "
+              import os
+              import sys
+              sys.path.insert(0, '/app/api')
+              
+              try:
+                  # Dify の既存の DB 接続コードを使用
+                  from extensions.ext_database import db
+                  from config import Config
+                  
+                  # 環境変数から設定を読み込む
+                  os.environ['DB_HOST'] = os.getenv('DB_HOST', 'localhost')
+                  os.environ['DB_PORT'] = os.getenv('DB_PORT', '5432')
+                  os.environ['DB_USERNAME'] = os.getenv('DB_USERNAME', 'postgres')
+                  os.environ['DB_PASSWORD'] = os.getenv('DB_PASSWORD', '')
+                  os.environ['DB_DATABASE'] = os.getenv('DB_DATABASE', 'dify')
+                  
+                  # データベース接続をテスト
+                  with db.engine.connect() as conn:
+                      result = conn.execute(db.text('SELECT 1'))
+                      if result.fetchone():
+                          print('✅ Database connection test: OK')
+                      else:
+                          print('❌ Database connection test: Failed')
+                          sys.exit(1)
+              except Exception as e:
+                  print(f'⚠️  Database connection test failed (will continue): {e}')
+                  # 接続テストが失敗しても続行（DB がまだ起動していない可能性）
+              "
+              
+              echo "=== [$(date +%Y-%m-%d\ %H:%M:%S)] Running flask db upgrade (direct, bypassing upgrade_db) ==="
+              python -m flask db upgrade
+              FLASK_EXIT_CODE=$?
+              
+              if [ $FLASK_EXIT_CODE -ne 0 ]; then
+                echo "❌ [$(date +%Y-%m-%d\ %H:%M:%S)] flask db upgrade failed with exit code $FLASK_EXIT_CODE"
+                exit $FLASK_EXIT_CODE
+              fi
+              
+              echo "✅ [$(date +%Y-%m-%d\ %H:%M:%S)] flask db upgrade completed successfully (exit code: $FLASK_EXIT_CODE)"
+              
+              # 既存の DB 接続コードを使って検証（psycopg2 を直接使わない）
+              echo "=== [$(date +%Y-%m-%d\ %H:%M:%S)] Verifying migration using Dify's existing code ==="
+              python -c "
+              import os
+              import sys
+              sys.path.insert(0, '/app/api')
+              
+              try:
+                  # Dify の既存の DB 接続コードを使用
+                  from extensions.ext_database import db
+                  
+                  with db.engine.connect() as conn:
+                      # Check alembic_version table
+                      result = conn.execute(db.text(\"SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename = 'alembic_version'\"))
+                      if result.fetchone():
+                          print('✅ Migration verified: alembic_version table exists')
+                          
+                          # Check migration version
+                          version_result = conn.execute(db.text('SELECT version_num FROM alembic_version'))
+                          version = version_result.fetchone()
+                          if version:
+                              print(f'✅ Current migration version: {version[0]}')
+                      else:
+                          print('❌ Migration failed: alembic_version table not found')
+                          sys.exit(1)
+              except Exception as e:
+                  print(f'⚠️  Migration verification failed (but migration itself succeeded): {e}')
+                  import traceback
+                  traceback.print_exc()
+                  # 検証が失敗しても、flask db upgrade が成功していれば OK とする
+              "
+              
+              echo "✅ [$(date +%Y-%m-%d\ %H:%M:%S)] Database migration completed successfully! ==="
+          env:
+            - name: DB_HOST
+              value: "dify-postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USERNAME
+              value: "{{ required "postgresql.auth.username is required" .Values.postgresql.auth.username }}"
+            - name: DB_PASSWORD
+              value: "{{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}"
+            - name: DB_DATABASE
+              value: "{{ required "postgresql.auth.database is required" .Values.postgresql.auth.database }}"
+            # Storage (required for app initialization)
+            - name: STORAGE_TYPE
+              value: "opendal"
+            - name: OPENDAL_SCHEME
+              value: "fs"
+            - name: OPENDAL_FS_ROOT
+              value: "/tmp"

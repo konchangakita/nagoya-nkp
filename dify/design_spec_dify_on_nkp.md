@@ -60,17 +60,16 @@
 - `Chart.yaml`  
 - `values.yaml`（固定値ゼロ。GitHub 公開可）  
 - `templates/`  
-  - `namespace.yaml`  
   - `secret.yaml`  
   - `dify-web.yaml`  
   - `dify-api.yaml`  
   - `dify-worker.yaml`  
   - `ingress.yaml`  
+  - `postgresql.yaml`      # 公式イメージ postgres:16 を利用  
+  - `redis.yaml`           # 公式イメージ redis:7 を利用  
   - `_helpers.tpl`  
 - `charts/`（サブチャート）  
-  - `postgresql/`  
-  - `redis/`  
-  - `weaviate/`  
+  - `weaviate/`            # Weaviate のみサブチャート利用  
 - `deploy.sh`（環境依存値を自動注入するスクリプト）  
 
 ---
@@ -216,7 +215,7 @@ env:
     - 環境変数 `DIFY_SECRET_KEY` が未設定の場合、`deploy.sh` が自動生成する（`openssl rand -hex 32`）。  
     - 既に設定されている場合はその値を使用する。  
   - LLM API Key（任意、`secrets.openaiApiKey`）  
-  - 必要であれば DB 接続パスワード等（サブチャートの values と連携）。  
+  - 必要であれば DB 接続パスワード等。  
     - PostgreSQL のパスワードは、環境変数 `POSTGRES_PASSWORD` が未設定の場合、`deploy.sh` が自動生成し `postgresql.auth.password` に注入する。  
 
 ---
@@ -434,6 +433,25 @@ kubectl get svc -A -l app.kubernetes.io/name=kommander-traefik -o jsonpath='{ran
 
 ```
 https://<Traefik_LB_IP>/dify
+```
+
+**注意**: ブラウザで自己署名証明書の警告が表示されますが、これは正常です。警告を無視してアクセスしてください。
+
+**動作確認**：
+
+すべてのPodが `Running` 状態で、`dify-web` が `1/1 Ready` になっていれば、Dify UIが表示されるはずです。
+
+```bash
+# 全Podの状態確認
+kubectl get pods -n dify
+
+# 期待される状態：
+# - dify-api: 1/1 Running
+# - dify-web: 1/1 Running
+# - dify-worker: 1/1 Running
+# - dify-postgresql-0: 1/1 Running
+# - dify-redis-master-*: 1/1 Running
+# - weaviate-0: 1/1 Running
 ```
 
 ---
