@@ -1,126 +1,48 @@
-# ==================================================
-# Global
-# ==================================================
-global:
-  image:
-    tag: latest
+expose:
+  ingressClassName: "" # required
+  path: ""             # required (e.g. /dify)
 
-# ==================================================
-# Ingress（Helmでは使わない：外だし）
-# ==================================================
-ingress:
-  enabled: false
+external:
+  scheme: ""           # required (e.g. https)
+  host: ""             # required (LB IP or DNS)
 
-# ==================================================
-# Web / API / Worker
-# ==================================================
-web:
-  replicaCount: 1
+images:
+  dify:
+    repository: ""     # required (e.g. langgenius/dify)
+    tag: ""            # required (e.g. 1.11.4)
 
-api:
-  replicaCount: 1
+secrets:
+  difySecretKey: ""    # required
+  openaiApiKey: ""     # optional
 
-worker:
-  replicaCount: 1
+storage:
+  storageClassName: "" # required (e.g. nutanix-volume)
 
-# ==================================================
-# PostgreSQL（内蔵）
-# ==================================================
 postgresql:
   enabled: true
-  global:
-    storageClass: nutanix-volume
-    postgresql:
-      auth:
-        postgresPassword: "dify"
-        database: "dify"
-  primary:
-    persistence:
-      enabled: true
-      size: 20Gi
+  persistence:
+    size: ""           # required (e.g. 20Gi)
+  auth:
+    username: ""       # required (e.g. dify)
+    password: ""       # required
+    database: ""       # required (e.g. dify)
 
-# ==================================================
-# Redis（内蔵・認証なし）
-# ==================================================
 redis:
   enabled: true
-  architecture: standalone
+  persistence:
+    size: ""           # required (e.g. 8Gi)
   auth:
-    enabled: false
-  master:
-    persistence:
-      enabled: true
-      size: 5Gi
-      storageClass: nutanix-volume
+    password: ""       # optional
 
-# ==================================================
-# External Redis（無効化：内蔵Redisを使用）
-# ==================================================
-externalRedis:
-  enabled: false
-
-# ==================================================
-# Gateway（無効化：Ingressを使用するため不要）
-# ==================================================
-gateway:
-  replicas: 0
-
-# ==================================================
-# Plugin Manager（一時的に無効化：復旧時はreplicas: 1に戻す）
-# ==================================================
-plugin_manager:
-  enabled: true  # 設定は残しておく（復旧用）
-  replicas: 0    # 無効化：復旧時は1に戻す
-
-# ==================================================
-# Plugin Connector（一時的に無効化：復旧時はreplicas: 1に戻す）
-# ==================================================
-plugin_connector:
-  replicas: 0    # 無効化：復旧時は1に戻す
-
-# ==================================================
-# Plugin Daemon（一時的に無効化：復旧時はreplicas: 1に戻す）
-# ==================================================
-plugin_daemon:
-  enabled: true  # 設定は残しておく（復旧用）
-  replicas: 0    # 無効化：復旧時は1に戻す
-
-# ==================================================
-# Vector DB : Weaviate
-# ★ nil pointer 対策を完全定義
-# ==================================================
 weaviate:
   enabled: true
-  authentication:
-    apikey:
-      enabled: false
   persistence:
     enabled: true
-    size: 20Gi
-  storage:
-    storageClassName: nutanix-volume
+    size: ""           # required (e.g. 50Gi)
+    storageClass: ""   # optional, defaults to storage.storageClassName if empty
 
-# ==================================================
-# Storage 設定
-# ==================================================
-# NKP標準ストレージ: nutanix-volume または nutanix-nfs
-# デフォルト: nutanix-volume（ReadWriteOnce）
-# NFSストレージが必要な場合は nutanix-nfs（ReadWriteMany）を指定
-storageClass: nutanix-volume
+dify:
+  fileStorage:
+    enabled: true
+    size: ""           # required (e.g. 20Gi)
 
-# ==================================================
-# Persistence 設定（API/Worker用）
-# ==================================================
-# ReadWriteMany access mode required for `api` and `worker`
-persistence:
-  type: "local"
-  local:
-    mountPath: "/app/api/storage"
-    annotations:
-      helm.sh/resource-policy: keep
-    persistentVolumeClaim:
-      existingClaim: ""
-      storageClass: nutanix-nfs  # ReadWriteManyが必要なのでnutanix-nfs
-      accessModes: ReadWriteMany
-      size: 5Gi
-      subPath: ""

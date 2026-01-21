@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dify-worker
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dify-worker
+  template:
+    metadata:
+      labels:
+        app: dify-worker
+    spec:
+      containers:
+        - name: dify-worker
+          image: "{{ required "images.dify.repository is required" .Values.images.dify.repository }}:{{ required "images.dify.tag is required" .Values.images.dify.tag }}"
+          envFrom:
+            - secretRef:
+                name: dify-secrets
+          env:
+            - name: SERVER_URL
+              value: "{{ include "dify.externalURL" . }}"
+            - name: CONSOLE_URL
+              value: "{{ include "dify.externalURL" . }}"
+            # PostgreSQL
+            - name: DB_HOST
+              value: "dify-postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USERNAME
+              value: "{{ required "postgresql.auth.username is required" .Values.postgresql.auth.username }}"
+            - name: DB_PASSWORD
+              value: "{{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}"
+            - name: DB_DATABASE
+              value: "{{ required "postgresql.auth.database is required" .Values.postgresql.auth.database }}"
+            # Redis
+            - name: REDIS_HOST
+              value: "dify-redis-master"
+            - name: REDIS_PORT
+              value: "6379"
+            {{- if .Values.redis.auth.password }}
+            - name: REDIS_PASSWORD
+              value: "{{ .Values.redis.auth.password }}"
+            {{- end }}
+            # Weaviate
+            - name: VECTOR_STORE
+              value: "weaviate"
+            - name: WEAVIATE_HOST
+              value: "dify-weaviate"
+            - name: WEAVIATE_PORT
+              value: "8080"
+            - name: WEAVIATE_SCHEME
+              value: "http"
+          # TODO: キューやバックグラウンド処理用のENVを後続で追加
+

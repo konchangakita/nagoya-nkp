@@ -1,0 +1,246 @@
+Dify Community Edition on NKP
+Helm パッケージ実装・最終仕様書（Cursor 指示用）
+1. 目的（Why）
+
+Dify Community Edition (CE) を
+Nutanix Kubernetes Platform (NKP) 上にデプロイする
+
+Helm パッケージ化し、どの環境でも再利用可能にする
+
+GitHub に公開する YAML / values.yaml には
+IP・URL・Secret 等の固定値を一切書かない
+
+環境依存値は デプロイ時に自動特定 or オプション指定する
+
+実装は 最小・単純・保守しやすいことを最優先する
+
+2. 前提条件（Environment）
+項目	内容
+Kubernetes	Nutanix Kubernetes Platform (NKP)
+Ingress Controller	Kommander Traefik
+IngressClass	kommander-traefik
+LoadBalancer	MetalLB
+StorageClass	nutanix-volume（default）
+Namespace	dify
+公開対象	prod のみ
+Dify Edition	Community Edition
+3. 公開方式（確定）
+方針
+
+Dify は Ingress 経由で公開する
+
+Ingress は IP を一切参照しない
+
+公開用 IP は Traefik（kommander-traefik）の Service: LoadBalancer が持つ
+
+Dify の公開パスは /dify
+
+外部アクセス例
+
+https://<Traefik_LB_IP>/dify
+
+4. 全体アーキテクチャ
+Browser
+  ↓ https://<LB_IP>/dify
+Traefik (kommander-traefik, LoadBalancer)
+  ↓ Ingress (PathPrefix /dify)
+Dify Web Service
+  ↓
+Dify API / Worker
+  ↓
+PostgreSQL / Redis / Weaviate
+
+5. Helm チャート構成（1チャート・全部入り）
+dify/
+├── Chart.yaml
+├── values.yaml              # 固定値ゼロ（GitHub公開可）
+├── templates/
+│   ├── namespace.yaml
+│   ├── secret.yaml
+│   ├── dify-web.yaml
+│   ├── dify-api.yaml
+│   ├── dify-worker.yaml
+│   ├── ingress.yaml
+│   └── _helpers.tpl
+├── charts/
+│   ├── postgresql/
+│   ├── redis/
+│   └── weaviate/
+└── deploy.sh                # 環境依存値を自動注入するスクリプト
+
+6. values.yaml の設計方針（最重要）
+原則
+
+固定値は一切書かない
+
+必須値は Helm の required 関数でチェック
+
+環境依存値はすべて helm install / upgrade --set で注入
+
+values.yaml（例）
+expose:
+  ingressClassName: ""
+  path: ""
+
+external:
+  scheme: ""
+  host: ""
+
+images:
+  dify:
+    repository: ""
+    tag: ""
+
+secrets:
+  difySecretKey: ""
+  openaiApiKey: ""
+
+storage:
+  storageClassName: ""
+
+7. Ingress 定義（IP 非依存）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dify
+  namespace: {{ .Release.Namespace }}
+spec:
+  ingressClassName: {{ required "expose.ingressClassName is required" .Values.expose.ingressClassName }}
+  rules:
+  - http:
+      paths:
+      - path: {{ required "expose.path is required" .Values.expose.path }}
+        pathType: Prefix
+        backend:
+          service:
+            name: dify-web
+            port:
+              number: 80
+
+8. Dify 外部URLの扱い（Community Edition 対応）
+外部URL生成（_helpers.tpl）
+{{- define "dify.externalURL" -}}
+{{ required "external.scheme is required" .Values.external.scheme }}://{{ required "external.host is required" .Values.external.host }}{{ .Values.expose.path }}
+{{- end -}}
+
+Dify Deployment 環境変数
+env:
+  - name: SERVER_URL
+    value: "{{ include "dify.externalURL" . }}"
+  - name: CONSOLE_URL
+    value: "{{ include "dify.externalURL" . }}"
+
+
+※ Community Edition でも必須
+
+9. データ永続化
+コンポーネント	方式
+PostgreSQL	StatefulSet + PVC
+Redis	StatefulSet + PVC
+Weaviate	StatefulSet + PVC
+Dify ファイル	PVC
+
+StorageClass：nutanix-volume
+
+RWX/NFS が必要な場合は、実装してもよい（storageclass: nutanix-nfs）
+
+バックアップは考慮しない
+
+10. Secret 管理
+方針
+
+Kubernetes Secret に直接格納
+
+GitHub に固定値は置かない
+
+値は deploy.sh / 環境変数 / --set で注入
+
+対象：
+
+DIFY_SECRET_KEY（必須）
+
+LLM API Key（任意）
+
+11. deploy.sh（環境依存値を自動特定）
+目的
+
+Traefik の LoadBalancer IP を 自動取得
+
+Helm に --set で注入
+
+YAML に固定値を残さない
+
+仕様
+
+対象 Service
+
+namespace: kon-workspace-4m9zt-nthlf
+
+name: kommander-traefik
+
+jsonpath
+
+{.status.loadBalancer.ingress[0].ip}
+
+挙動
+
+Namespace dify がなければ作成
+
+Traefik LB IP を取得（取得できるまで待つ）
+
+helm upgrade --install を実行
+
+12. Helm 実行例（完成形）
+export DIFY_SECRET_KEY=$(openssl rand -hex 32)
+
+./deploy.sh \
+  --image-tag 0.14.3 \
+  --openai-api-key sk-xxxxxx
+
+
+内部的には：
+
+helm upgrade --install dify ./dify -n dify \
+  --set expose.ingressClassName=kommander-traefik \
+  --set expose.path=/dify \
+  --set external.scheme=https \
+  --set external.host=<AUTO_DETECTED_LB_IP> \
+  --set secrets.difySecretKey=$DIFY_SECRET_KEY \
+  --set secrets.openaiApiKey=sk-xxxxxx \
+  --set images.dify.repository=langgenius/dify \
+  --set images.dify.tag=0.14.3 \
+  --set storage.storageClassName=nutanix-volume
+
+13. Community Edition 明示
+
+使用 image：Community Edition
+
+Enterprise 専用コンポーネントは含めない
+
+SSO / 監査 / 組織管理は非対象
+
+CE 標準 API のみ使用
+
+14. 非対象（割り切り）
+
+dev / stg 環境
+
+DNS / 正式証明書管理
+
+バックアップ / DR
+
+SSO / IdP 連携
+
+15. 実装優先順位（Cursor向け）
+
+Helm チャート骨格作成
+
+Dify Web / API / Worker Deployment
+
+PostgreSQL / Redis / Weaviate 同梱
+
+Ingress（/dify）
+
+deploy.sh 実装
+
+values.yaml required チェック

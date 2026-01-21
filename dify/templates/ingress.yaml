@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: dify
+  namespace: {{ .Release.Namespace }}
+spec:
+  ingressClassName: {{ required "expose.ingressClassName is required" .Values.expose.ingressClassName }}
+  rules:
+    - http:
+        paths:
+          - path: {{ required "expose.path is required" .Values.expose.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: dify-web
+                port:
+                  number: 80
+
