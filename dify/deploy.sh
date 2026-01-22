@@ -65,6 +65,21 @@ fi
 # Ensure namespace exists
 kubectl get ns dify >/dev/null 2>&1 || kubectl create ns dify
 
+# Add required Helm repositories
+echo "Adding required Helm repositories..."
+if ! helm repo list | grep -q "traefik"; then
+  echo "  Adding traefik repository..."
+  helm repo add traefik https://traefik.github.io/charts
+fi
+if ! helm repo list | grep -q "weaviate"; then
+  echo "  Adding weaviate repository..."
+  helm repo add weaviate https://weaviate.github.io/weaviate-helm
+fi
+
+# Update Helm repositories
+echo "Updating Helm repositories..."
+helm repo update
+
 # Build Helm dependencies (including Traefik)
 echo "Building Helm dependencies..."
 helm dependency build "${CHART_DIR}"
