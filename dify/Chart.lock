@@ -1,9 +1,0 @@
-dependencies:
-- name: traefik
-  repository: https://traefik.github.io/charts
-  version: 38.0.2
-- name: weaviate
-  repository: https://weaviate.github.io/weaviate-helm
-  version: 17.7.0
-digest: sha256:eba6d94b3d7c186e2cfd218b0165516970896207974b8917496d67b9592717d4
-generated: "2026-01-22T00:39:51.57224836+09:00"

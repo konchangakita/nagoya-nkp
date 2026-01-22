@@ -6,9 +6,9 @@ metadata:
   namespace: {{ .Release.Namespace }}
 spec:
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   resources:
     requests:
-      storage: {{ required "dify.fileStorage.size is required" .Values.dify.fileStorage.size }}
-  storageClassName: {{ if .Values.dify.fileStorage.storageClass }}{{ .Values.dify.fileStorage.storageClass }}{{ else }}nutanix-nfs{{ end }}
+      storage: {{ .Values.dify.fileStorage.size | default "20Gi" }}
+  storageClassName: {{ if .Values.dify.fileStorage.storageClass }}{{ .Values.dify.fileStorage.storageClass }}{{ else }}{{ .Values.storage.storageClassName | default "nutanix-volume" }}{{ end }}
 {{- end }}

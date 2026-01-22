@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: dify-plugin-daemon
-          image: "{{ required "images.pluginDaemon.repository is required" .Values.images.pluginDaemon.repository }}:{{ required "images.pluginDaemon.tag is required" .Values.images.pluginDaemon.tag }}"
+          image: "{{ .Values.images.pluginDaemon.repository | default "langgenius/dify-plugin-daemon" }}:{{ .Values.images.pluginDaemon.tag | default "0.5.3-local" }}"
           imagePullPolicy: IfNotPresent
           env:
             # Plugin Daemon specific (minimal configuration)
@@ -37,10 +37,15 @@ spec:
                 secretKeyRef:
                   name: dify-secrets
                   key: difyInnerApiKey
+            # Plugin Daemon URL (内部URLで完結)
             - name: PLUGIN_DAEMON_URL
-              value: "{{ include "dify.externalURL" . }}/plugin"
+              value: "http://dify-plugin-daemon:5002"
+            # Plugin Remote Installing (Ingress経由でアクセス可能なURL)
+            # Note: 相対パスで動作するため、external.host不要
+            # 固定IP依存を避けるため、Ingress経由でアクセス可能なURLは自動判定される
+            # PLUGIN_REMOTE_INSTALLING_HOST は空文字列でも動作するが、plugin-daemonが必須チェックをしている場合は localhost を使用
             - name: PLUGIN_REMOTE_INSTALLING_HOST
-              value: "{{ include "dify.externalURL" . }}"
+              value: "localhost"
             - name: PLUGIN_REMOTE_INSTALLING_PORT
               value: "443"
             - name: PLUGIN_WORKING_PATH
@@ -54,30 +59,28 @@ spec:
             - name: DB_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.usernameKey | default "postgres-username" }}{{ else }}postgres-username{{ end }}
+                  name: dify-postgresql
+                  key: postgres-username
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.passwordKey | default "postgres-password" }}{{ else }}postgres-password{{ end }}
+                  name: dify-postgresql
+                  key: postgres-password
             - name: DB_DATABASE
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.databaseKey | default "postgres-database" }}{{ else }}postgres-database{{ end }}
+                  name: dify-postgresql
+                  key: postgres-database
             # Redis (required by plugin-daemon)
             - name: REDIS_HOST
-              value: {{ if .Values.pluginDaemon }}{{ if .Values.pluginDaemon.redis }}{{ .Values.pluginDaemon.redis.host | default "dify-redis-master" }}{{ else }}dify-redis-master{{ end }}{{ else }}dify-redis-master{{ end }}
+              value: "dify-redis"
             - name: REDIS_PORT
-              value: "{{ if .Values.pluginDaemon }}{{ if .Values.pluginDaemon.redis }}{{ .Values.pluginDaemon.redis.port | default "6379" }}{{ else }}6379{{ end }}{{ else }}6379{{ end }}"
-            {{- if and .Values.pluginDaemon .Values.pluginDaemon.redis .Values.pluginDaemon.redis.authEnabled }}
+              value: "6379"
             - name: REDIS_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.pluginDaemon.redis.existingSecret | default "dify-redis" }}
-                  key: {{ .Values.pluginDaemon.redis.passwordKey | default "password" }}
-            {{- end }}
+                  name: dify-redis
+                  key: password
           ports:
             - containerPort: 5002
               name: http
@@ -102,6 +105,13 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
       volumes:
         {{- if .Values.dify.fileStorage.enabled }}
         - name: filestorage

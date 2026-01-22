@@ -24,33 +24,130 @@ Dify Community Edition を Kubernetes (Nutanix Kubernetes Platform) 上にデプ
   - `MIGRATION_ENABLED=false` に設定されています（Job で migration を実行するため）
   - API コンテナ起動時の自動 migration は無効化されています
 
+### Secret 自動生成
+
+**Secret は自動生成されます（lookup で既存値を優先）**
+
+- Dify Secrets (`dify-secrets`): DIFY_SECRET_KEY, PLUGIN_DAEMON_KEY, DIFY_INNER_API_KEY
+- PostgreSQL Secrets (`dify-postgresql`): postgres-username, postgres-password, postgres-database
+- Redis Secrets (`dify-redis`): password
+
+**重要**: PostgreSQL/Redis のパスワードは PVC が残る限り同じ値が必要です。upgrade 時は既存 Secret を lookup で維持します。
+
 ## インストール
 
 ### 前提条件
 
 - Kubernetes クラスタ（Nutanix Kubernetes Platform）
 - Helm 3.x
-- MetalLB（LoadBalancer 用）
+- Traefik Ingress Controller（dify namespace内の dify-traefik）
 - Nutanix CSI（ストレージ用）
 
 ### デプロイ
 
 ```bash
-export KUBECONFIG=/home/ubuntu/nkp/kube.conf
-export DIFY_SECRET_KEY=$(openssl rand -hex 32)
-./deploy.sh --image-tag 1.11.4 --openai-api-key sk-xxx
+# Namespace を作成（存在しない場合）
+kubectl create namespace dify
+
+# Helm Chart をデプロイ（デフォルト値を使用、最小限の指定のみ）
+helm upgrade --install dify ./dify -n dify --create-namespace
+
+# OpenAI APIを使用する場合のみ追加
+# helm upgrade --install dify ./dify -n dify --create-namespace \
+#   --set secrets.openaiApiKey=sk-xxx
+
+# イメージタグを変更する場合（web/api/workerは一括指定可能）
+# helm upgrade --install dify ./dify -n dify --create-namespace \
+#   --set images.tag=1.12.0 \
+#   --set images.pluginDaemon.tag=0.6.0
+
+# 個別にバージョンを指定する場合（通常は不要）
+# helm upgrade --install dify ./dify -n dify --create-namespace \
+#   --set images.web.tag=1.12.0 \
+#   --set images.api.tag=1.12.0 \
+#   --set images.worker.tag=1.12.0 \
+#   --set images.pluginDaemon.tag=0.6.0
+
+# Ingress Class名を変更する場合（通常は不要、デフォルト: dify-traefik）
+# helm upgrade --install dify ./dify -n dify --create-namespace \
+#   --set expose.ingressClassName=kommander-traefik
 ```
 
-### パラメータ
+**重要**: `external.host` の指定は不要です。相対パスまたはHostヘッダー由来で動作します。
 
-主要なパラメータは `deploy.sh` で設定されます。詳細は `values.yaml` を参照してください。
+### 主要パラメータ（通常はデフォルト値でOK）
+
+- `expose.ingressClassName`: Ingress Class 名（デフォルト: `dify-traefik`、通常は変更不要）
+- `images.tag`: 共通イメージタグ（web/api/worker用、デフォルト: `1.11.4`）
+  - web/api/workerは通常同じバージョンを使用するため、このパラメータで一括指定可能
+  - 個別指定も可能（`images.web.tag`, `images.api.tag`, `images.worker.tag`）
+- `images.pluginDaemon.tag`: Plugin Daemon イメージタグ（デフォルト: `0.5.3-local`）
+- `secrets.openaiApiKey`: OpenAI API Key（オプション、OpenAIを使用する場合のみ）
+- `external.host`: 外部URLのホスト名（オプション、未指定でOK）
+  - 未指定の場合は相対パスで動作（Ingress経由でアクセス可能なURLは自動判定）
+  - 固定IP依存を避けるため、通常は指定不要
+- `external.scheme`: 外部URLのスキーム（デフォルト: `https`、オプション）
+- `images.web.tag`: Dify Web イメージタグ（必須）
+- `images.api.tag`: Dify API イメージタグ（必須）
+- `images.worker.tag`: Dify Worker イメージタグ（必須）
+- `images.pluginDaemon.tag`: Plugin Daemon イメージタグ（必須）
+- `secrets.openaiApiKey`: OpenAI API Key（オプション）
+- `storage.storageClassName`: Storage Class 名（デフォルト: `nutanix-volume`）
+- `postgresql.persistence.size`: PostgreSQL PVC サイズ（デフォルト: `20Gi`）
+- `redis.persistence.size`: Redis PVC サイズ（デフォルト: `8Gi`）
+- `weaviate.persistence.size`: Weaviate PVC サイズ（デフォルト: `50Gi`）
+- `dify.fileStorage.size`: File Storage PVC サイズ（デフォルト: `20Gi`）
+
+詳細は `values.yaml` を参照してください。
 
 ## アンインストール
 
 ```bash
-export KUBECONFIG=/home/ubuntu/nkp/kube.conf
+# Helm release を削除
 helm uninstall dify -n dify
+
+# Namespace を削除（すべてのリソースを含む）
 kubectl delete namespace dify
+
+# 完全削除（PVC も含む）
+helm uninstall dify -n dify
+kubectl delete pvc --all -n dify
+kubectl delete namespace dify
+```
+
+## 動作確認
+
+### 外部アクセス確認
+
+```bash
+# LoadBalancer の IP を確認（helm install では使わない、確認のみ）
+kubectl get svc -n dify dify-traefik -o wide
+
+# LB IP を取得
+LB=$(kubectl -n dify get svc dify-traefik -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+
+# アクセステスト
+curl -k -sS -o /dev/null -w "/:%{http_code}\n" https://$LB/
+curl -k -sS -o /dev/null -w "/apps:%{http_code}\n" https://$LB/apps
+curl -k -sS -o /dev/null -w "/plugins:%{http_code}\n" https://$LB/plugins
+curl -k -sS -o /dev/null -w "/console:%{http_code}\n" https://$LB/console
+curl -k -sS -o /dev/null -w "/api:%{http_code}\n" https://$LB/api
+curl -k -sS -o /dev/null -w "/plugin/health/check:%{http_code}\n" https://$LB/plugin/health/check
+```
+
+**期待結果**:
+- `/`, `/apps`, `/plugins`: 200（Next.js）
+- `/console`: 200 or 307（実装により遷移OK）
+- `/plugin/health/check`: 200（plugin-daemon）
+
+### 内部疎通確認
+
+```bash
+# Plugin Daemon のヘルスチェック
+kubectl exec -n dify $(kubectl get pods -n dify -l app=dify-plugin-daemon -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:5002/health/check
+
+# API から Plugin Daemon への接続確認
+kubectl exec -n dify $(kubectl get pods -n dify -l app=dify-api -o jsonpath='{.items[0].metadata.name}') -- curl -s http://dify-plugin-daemon:5002/health/check
 ```
 
 ## 確認コマンド
@@ -59,8 +156,8 @@ kubectl delete namespace dify
 # Pod の状態確認
 kubectl get pods -n dify
 
-# Deployment/Service の状態確認（plugin-daemon を含む）
-kubectl get deploy,po,svc -n dify | grep -iE "plugin|daemon|dify"
+# Deployment/Service の状態確認
+kubectl get deploy,svc -n dify
 
 # Migration Job の状態確認
 kubectl get jobs -n dify
@@ -74,8 +171,9 @@ kubectl exec -n dify dify-postgresql-0 -- psql -U dify -d dify -c "SELECT tablen
 # Plugin Daemon のログ確認
 kubectl logs -n dify -l app=dify-plugin-daemon
 
-# Plugin Daemon のヘルスチェック確認
-kubectl exec -n dify $(kubectl get pods -n dify -l app=dify-plugin-daemon -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:5002/health
+# Ingress の状態確認
+kubectl get ingress -n dify
+kubectl describe ingress -n dify dify
 ```
 
 ## トラブルシューティング
@@ -90,108 +188,23 @@ kubectl exec -n dify $(kubectl get pods -n dify -l app=dify-plugin-daemon -o jso
 2. Job を再実行
    ```bash
    kubectl delete job -n dify dify-db-migration
-   helm upgrade dify . -n dify --reuse-values
+   helm upgrade dify ./dify -n dify --reuse-values
    ```
 
 ### データベース接続エラー
 
 - PostgreSQL Pod が起動しているか確認
-- パスワードが正しいか確認
+  ```bash
+  kubectl get pods -n dify -l app=dify-postgresql
+  kubectl logs -n dify -l app=dify-postgresql
+  ```
+
+- PostgreSQL の接続確認
+  ```bash
+  kubectl exec -n dify dify-postgresql-0 -- pg_isready -U dify -d dify
+  ```
+
 - ネットワークポリシーを確認
-
-**重要: PostgreSQL パスワードの固定化について**
-
-### パスワード固定化の理由
-
-PostgreSQL のパスワードは **固定化** されています。これは以下の理由からです：
-
-1. **PVC の永続化**: PostgreSQL は初回起動時に PVC にパスワードを保存します
-2. **再現性の担保**: 同じパスワードを使用することで、再デプロイ時も認証が成功します
-3. **Secret との整合性**: `dify-postgresql` Secret と PostgreSQL の実パスワードが常に一致します
-
-### パスワードの設定方法
-
-`deploy.sh` 実行時に `POSTGRES_PASSWORD` 環境変数を設定してください：
-
-```bash
-export POSTGRES_PASSWORD='your-fixed-password'
-./deploy.sh --image-tag 1.11.4
-```
-
-**注意**: `POSTGRES_PASSWORD` が未設定の場合、`deploy.sh` はエラーで終了します（ランダム生成は行いません）。
-
-### パスワードの参照元
-
-- **PostgreSQL Secret**: `dify-postgresql` (namespace: `dify`)
-  - キー名: `postgres-password` (または `password` で互換性あり)
-  - 生成元: `values.yaml` の `postgresql.auth.password`
-- **dify-api / plugin-daemon**: `DB_PASSWORD` 環境変数は `dify-postgresql` Secret から `secretKeyRef` で読み込まれます
-
-### パスワード変更時の注意事項
-
-**PVC が残っている場合、PostgreSQL のパスワード変更は反映されません**
-
-- PostgreSQL は初回起動時に PVC にパスワードを保存します
-- PVC が存在する場合、`POSTGRES_PASSWORD` 環境変数の変更は無視されます
-- パスワードを変更する場合は、**必ず PVC を削除してから**再デプロイしてください
-
-```bash
-# 注意: データが失われます
-kubectl delete pvc -n dify data-dify-postgresql-0
-export POSTGRES_PASSWORD='new-password'
-./deploy.sh --image-tag 1.11.4
-```
-
-### 運用ルール
-
-1. **`postgresql.auth.password` は固定にすること**
-   - ランダム生成は禁止
-   - 環境変数 `POSTGRES_PASSWORD` で指定
-
-2. **Secret 名/キー名**
-   - Secret 名: `dify-postgresql` (デフォルト、`values.yaml` で変更可能)
-   - キー名:
-     - `postgres-password`: パスワード（推奨）
-     - `postgres-username`: ユーザー名
-     - `postgres-database`: データベース名
-     - `password`: 互換性のためのキー（`postgres-password` と同じ値）
-
-3. **再デプロイ時の動作**
-   - `deploy.sh` は PVC の存在をチェックし、警告を表示します
-   - パスワードが一致しない場合は認証エラーが発生します
-   - パスワードを変更する場合は、明示的に PVC を削除してください
-
-### Plugin Daemon の DB 接続エラー (28P01) を解消する場合
-
-PostgreSQL のパスワード認証エラーが発生した場合、以下の手順で復帰確認を行います:
-
-1. Helm upgrade で Secret を再生成
-   ```bash
-   export KUBECONFIG=/home/ubuntu/nkp/kube.conf
-   export DIFY_SECRET_KEY=$(openssl rand -hex 32)
-   helm upgrade dify . -n dify --set secrets.difySecretKey="${DIFY_SECRET_KEY}" --reuse-values
-   ```
-
-2. plugin-daemon を再起動
-   ```bash
-   kubectl rollout restart deploy/dify-plugin-daemon -n dify
-   ```
-
-3. plugin-daemon の状態を確認
-   ```bash
-   kubectl get pods -n dify -l app=dify-plugin-daemon
-   kubectl logs -n dify -l app=dify-plugin-daemon --tail=50
-   ```
-
-4. dify-api から plugin-daemon への接続確認
-   ```bash
-   kubectl exec -n dify $(kubectl get pods -n dify -l app=dify-api -o jsonpath='{.items[0].metadata.name}') -- curl -sv http://dify-plugin-daemon:5002/health
-   ```
-
-5. plugin-daemon の /management/models エンドポイント確認
-   ```bash
-   kubectl exec -n dify $(kubectl get pods -n dify -l app=dify-api -o jsonpath='{.items[0].metadata.name}') -- curl -sv http://dify-plugin-daemon:5002/management/models
-   ```
 
 ### Plugin Daemon 関連エラー
 
@@ -207,7 +220,7 @@ PostgreSQL のパスワード認証エラーが発生した場合、以下の手
 
 - Plugin Daemon のヘルスチェックを確認
   ```bash
-  kubectl exec -n dify $(kubectl get pods -n dify -l app=dify-plugin-daemon -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:5002/health
+  kubectl exec -n dify $(kubectl get pods -n dify -l app=dify-plugin-daemon -o jsonpath='{.items[0].metadata.name}') -- curl -s http://localhost:5002/health/check
   ```
 
 - Ingress で /plugin パスが正しくルーティングされているか確認
@@ -215,22 +228,45 @@ PostgreSQL のパスワード認証エラーが発生した場合、以下の手
   kubectl describe ingress -n dify dify | grep -A 10 "/plugin"
   ```
 
-- ブラウザ DevTools で以下を確認
-  - `/console/api/workspaces/current/models/model-types/llm` が 200 になること
-  - `/plugin/*` 経由のリクエストが 4xx にならないこと
-  - "Failed to request plugin daemon" エラーが消えること
-
 **重要: Plugin Daemon は Redis が必須です**
 
 - Plugin Daemon は Redis に接続する必要があります
-- 必要な環境変数:
-  - `REDIS_HOST`: Redis Service 名（デフォルト: `dify-redis-master`）
-  - `REDIS_PORT`: Redis ポート（デフォルト: `6379`）
-  - `REDIS_PASSWORD`: Redis パスワード（認証が有効な場合のみ）
-- Redis Service 名とポートは `values.yaml` の `pluginDaemon.redis` セクションで設定可能
-- Redis 認証が有効な場合は `pluginDaemon.redis.authEnabled=true` を設定し、Secret を指定
+- Redis Service 名: `dify-redis`（デフォルト）
+- Redis パスワードは Secret (`dify-redis`) から自動的に読み込まれます
+
+### ImagePullBackOff エラー
+
+Docker Hub のレート制限が原因の可能性があります。
+
+- 一時的な回避策: しばらく待ってから再試行
+- 根本的な解決策: プライベートレジストリを使用、または Docker Hub の認証情報を使用
+
+## アーキテクチャ
+
+### コンポーネント
+
+- **dify-web**: Web UI（Next.js）
+- **dify-api**: API サーバー（Flask）
+- **dify-worker**: バックグラウンドワーカー（Celery）
+- **dify-plugin-daemon**: Plugin Daemon（内部アクセスのみ）
+- **dify-postgresql**: PostgreSQL データベース（StatefulSet）
+- **dify-redis**: Redis キャッシュ（Deployment）
+- **dify-weaviate**: Weaviate ベクトルストア（Deployment）
+
+### ネットワーク
+
+- **Ingress**: Traefik（dify-traefik、dify namespace内）を使用
+- **Service**: すべて ClusterIP（内部アクセスのみ）
+- **Plugin Daemon**: 外部アクセス不要、内部 URL (`http://dify-plugin-daemon:5002`) で完結
+- **外部URL**: `external.host` 指定不要、相対パスまたはHostヘッダー由来で動作
+
+### ストレージ
+
+- **PostgreSQL**: RWO（ReadWriteOnce）、nutanix-volume
+- **Redis**: RWO、nutanix-volume
+- **Weaviate**: RWO、nutanix-volume
+- **File Storage**: RWO、nutanix-volume
 
 ## 参考資料
 
 - [MIGRATION_ROOT_CAUSE.md](./MIGRATION_ROOT_CAUSE.md) - マイグレーション問題の根本原因分析
-- [MIGRATION_ANALYSIS.md](./MIGRATION_ANALYSIS.md) - マイグレーション問題の詳細分析

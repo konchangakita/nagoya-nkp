@@ -3,6 +3,10 @@
 {{- end -}}
 
 {{- define "dify.externalURL" -}}
-{{ required "external.scheme is required" .Values.external.scheme }}://{{ required "external.host is required" .Values.external.host }}
+{{- if .Values.external.host -}}
+{{ .Values.external.scheme | default "https" }}://{{ .Values.external.host }}
+{{- else -}}
+{{- /* 空文字列を返す（相対パスで動作） */}}
+{{- end -}}
 {{- end -}}
 

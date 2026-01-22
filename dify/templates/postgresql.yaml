@@ -1,16 +1,4 @@
-apiVersion: v1
-kind: Secret
-metadata:
-  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-  namespace: {{ .Release.Namespace }}
-type: Opaque
-stringData:
-  {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.passwordKey | default "postgres-password" }}{{ else }}postgres-password{{ end }}: {{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}
-  {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.usernameKey | default "postgres-username" }}{{ else }}postgres-username{{ end }}: {{ required "postgresql.auth.username is required" .Values.postgresql.auth.username }}
-  {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.databaseKey | default "postgres-database" }}{{ else }}postgres-database{{ end }}: {{ required "postgresql.auth.database is required" .Values.postgresql.auth.database }}
-  # Compatibility: add 'password' key for backward compatibility (same value as postgres-password)
-  password: {{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}
----
+{{- if .Values.postgresql.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -21,8 +9,8 @@ spec:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ required "postgresql.persistence.size is required" .Values.postgresql.persistence.size }}
-  storageClassName: {{ required "storage.storageClassName is required" .Values.storage.storageClassName }}
+      storage: {{ .Values.postgresql.persistence.size | default "20Gi" }}
+  storageClassName: {{ .Values.storage.storageClassName | default "nutanix-volume" }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -42,30 +30,58 @@ spec:
     spec:
       containers:
         - name: postgresql
-          image: postgres:16
+          image: postgres:{{ .Values.postgresql.image.tag | default "16" }}
           env:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.usernameKey | default "postgres-username" }}{{ else }}postgres-username{{ end }}
+                  name: dify-postgresql
+                  key: postgres-username
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.passwordKey | default "postgres-password" }}{{ else }}postgres-password{{ end }}
+                  name: dify-postgresql
+                  key: postgres-password
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.databaseKey | default "postgres-database" }}{{ else }}postgres-database{{ end }}
+                  name: dify-postgresql
+                  key: postgres-database
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           ports:
             - containerPort: 5432
+              name: postgresql
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U $(POSTGRES_USER) -d $(POSTGRES_DB)
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
       volumes:
         - name: data
           persistentVolumeClaim:
@@ -83,4 +99,5 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
-
+      name: postgresql
+{{- end }}

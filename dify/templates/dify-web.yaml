@@ -15,27 +15,28 @@ spec:
     spec:
       containers:
         - name: dify-web
-          image: "{{ required "images.web.repository is required" .Values.images.web.repository }}:{{ required "images.web.tag is required" .Values.images.web.tag }}"
-          envFrom:
-            - secretRef:
-                name: dify-secrets
+          image: "{{ .Values.images.web.repository | default "langgenius/dify-web" }}:{{ .Values.images.web.tag | default .Values.images.tag | default "1.11.4" }}"
           env:
+            # External URLs (相対パスで動作、external.host不要)
+            # Note: 相対パスを使用することで、固定IP依存を避ける
+            # Ingress経由でアクセス可能なURLは自動判定される
+            # Dify Webは環境変数が空の場合、自動的に相対パスを使用する
             - name: SERVER_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: CONSOLE_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: APP_API_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: CONSOLE_API_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: CONSOLE_WEB_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: APP_WEB_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: SERVICE_API_URL
-              value: "{{ include "dify.externalURL" . }}/v1"
+              value: ""
             - name: FILES_URL
-              value: "{{ include "dify.externalURL" . }}/files"
+              value: ""
           ports:
             - containerPort: 3000
           readinessProbe:
@@ -43,7 +44,18 @@ spec:
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 10
-          # リソースやlivenessProbe等は後続で調整
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
 ---
 apiVersion: v1
 kind: Service
@@ -57,4 +69,3 @@ spec:
   ports:
     - port: 80
       targetPort: 3000
-

@@ -20,11 +20,14 @@ spec:
       # initContainer から migration を外し、Job に一本化
       # upgrade_db() は exit code を返さず危険なため使用しない
       ########################################
+      # Security Context for file storage permissions
+      securityContext:
+        fsGroup: 1001  # Dify user GID for file storage access
       # Main Container: Dify API
       ########################################
       containers:
         - name: dify-api
-          image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ required "images.api.tag is required" .Values.images.api.tag }}"
+          image: "{{ .Values.images.api.repository | default "langgenius/dify-api" }}:{{ .Values.images.api.tag | default .Values.images.tag | default "1.11.4" }}"
           env:
             # Dify Secret Key (公式の env 名)
             - name: DIFY_SECRET_KEY
@@ -55,23 +58,25 @@ spec:
             # upgrade_db() は exit code を返さず危険なため使用しない
             - name: MIGRATION_ENABLED
               value: "false"
+            # External URLs (相対パスで動作、external.host不要)
+            # Note: 相対パスを使用することで、固定IP依存を避ける
+            # Ingress経由でアクセス可能なURLは自動判定される
+            # Dify APIは環境変数が空の場合、自動的に相対パスを使用する
             - name: SERVER_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: CONSOLE_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: CONSOLE_API_URL
-              value: "{{ include "dify.externalURL" . }}/console/api"
+              value: ""
             - name: CONSOLE_WEB_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: APP_WEB_URL
-              value: "{{ include "dify.externalURL" . }}"
+              value: ""
             - name: SERVICE_API_URL
-              value: "{{ include "dify.externalURL" . }}/v1"
+              value: ""
             - name: FILES_URL
-              value: "{{ include "dify.externalURL" . }}/files"
-            # Plugin Daemon
-            # Note: PLUGIN_DAEMON_URL を内部Serviceに変更してSSL検証エラーを回避
-            # 外部公開用URLが必要な場合は別途環境変数を追加することを検討
+              value: ""
+            # Plugin Daemon (内部URLで完結)
             - name: PLUGIN_DAEMON_URL
               value: "http://dify-plugin-daemon:5002"
             - name: PLUGIN_DAEMON_API_URL
@@ -90,7 +95,7 @@ spec:
             {{- end }}
             {{- end }}
             - name: MARKETPLACE_URL
-              value: "{{ include "dify.externalURL" . }}/plugins"
+              value: ""
             # PostgreSQL
             - name: DB_HOST
               value: "dify-postgresql"
@@ -99,30 +104,33 @@ spec:
             - name: DB_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.usernameKey | default "postgres-username" }}{{ else }}postgres-username{{ end }}
+                  name: dify-postgresql
+                  key: postgres-username
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.passwordKey | default "postgres-password" }}{{ else }}postgres-password{{ end }}
+                  name: dify-postgresql
+                  key: postgres-password
             - name: DB_DATABASE
               valueFrom:
                 secretKeyRef:
-                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
-                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.databaseKey | default "postgres-database" }}{{ else }}postgres-database{{ end }}
+                  name: dify-postgresql
+                  key: postgres-database
             # Redis
             - name: REDIS_HOST
-              value: "dify-redis-master"
+              value: "dify-redis"
             - name: REDIS_PORT
               value: "6379"
-            {{- if .Values.redis.auth.password }}
             - name: REDIS_PASSWORD
-              value: "{{ .Values.redis.auth.password }}"
-            {{- end }}
+              valueFrom:
+                secretKeyRef:
+                  name: dify-redis
+                  key: password
             # Weaviate
             - name: VECTOR_STORE
               value: "weaviate"
+            - name: WEAVIATE_ENDPOINT
+              value: "http://dify-weaviate:8080"
             - name: WEAVIATE_HOST
               value: "dify-weaviate"
             - name: WEAVIATE_PORT
@@ -148,6 +156,18 @@ spec:
               port: 5001
             initialDelaySeconds: 10
             periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 5001
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
       volumes:
         {{- if .Values.dify.fileStorage.enabled }}
         - name: filestorage

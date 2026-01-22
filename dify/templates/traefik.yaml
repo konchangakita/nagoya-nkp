@@ -1,0 +1,114 @@
+{{- if .Values.expose.traefik.enabled }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: dify-traefik
+  namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dify-traefik
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dify-traefik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: dify-traefik
+subjects:
+  - kind: ServiceAccount
+    name: dify-traefik
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dify-traefik
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dify-traefik
+  template:
+    metadata:
+      labels:
+        app: dify-traefik
+    spec:
+      serviceAccountName: dify-traefik
+      containers:
+        - name: traefik
+          image: traefik:v3.0
+          args:
+            - --api.insecure=true
+            - --providers.kubernetesingress=true
+            - --providers.kubernetesingress.ingressclass=dify-traefik
+            - --providers.kubernetesingress.namespaces={{ .Release.Namespace }}
+            - --entrypoints.web.address=:80
+            - --entrypoints.websecure.address=:443
+            - --entrypoints.websecure.http.tls=true
+            - --entrypoints.web.http.redirections.entrypoint.to=websecure
+            - --entrypoints.web.http.redirections.entrypoint.scheme=https
+            - --log.level=INFO
+          ports:
+            - containerPort: 80
+              name: web
+            - containerPort: 443
+              name: websecure
+            - containerPort: 8080
+              name: admin
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-traefik
+  namespace: {{ .Release.Namespace }}
+spec:
+  type: LoadBalancer
+  selector:
+    app: dify-traefik
+  ports:
+    - port: 80
+      targetPort: 80
+      name: web
+    - port: 443
+      targetPort: 443
+      name: websecure
+---
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: dify-traefik
+spec:
+  controller: traefik.io/ingress-controller
+{{- end }}

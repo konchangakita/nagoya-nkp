@@ -22,7 +22,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: migrate
-          image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ required "images.api.tag is required" .Values.images.api.tag }}"
+          image: "{{ .Values.images.api.repository | default "langgenius/dify-api" }}:{{ .Values.images.api.tag | default .Values.images.tag | default "1.11.4" }}"
           imagePullPolicy: IfNotPresent
           command: ["/bin/bash", "-c"]
           args:
@@ -146,11 +146,20 @@ spec:
             - name: DB_PORT
               value: "5432"
             - name: DB_USERNAME
-              value: "{{ required "postgresql.auth.username is required" .Values.postgresql.auth.username }}"
+              valueFrom:
+                secretKeyRef:
+                  name: dify-postgresql
+                  key: postgres-username
             - name: DB_PASSWORD
-              value: "{{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}"
+              valueFrom:
+                secretKeyRef:
+                  name: dify-postgresql
+                  key: postgres-password
             - name: DB_DATABASE
-              value: "{{ required "postgresql.auth.database is required" .Values.postgresql.auth.database }}"
+              valueFrom:
+                secretKeyRef:
+                  name: dify-postgresql
+                  key: postgres-database
             # Storage (required for app initialization)
             - name: STORAGE_TYPE
               value: "opendal"

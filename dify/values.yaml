@@ -1,103 +1,86 @@
+# ============================================
+# Dify Helm Chart Values
+# ============================================
+
+# Ingress Configuration
 expose:
-  ingressClassName: "" # required (e.g. dify-traefik)
-  path: "/"            # fixed to root path (/)
+  ingressClassName: "dify-traefik"  # Default: dify-traefik (dify namespace内のTraefik)
   traefik:
-    enabled: true      # Enable dedicated Traefik Ingress Controller
-    # Traefik subchart values (passed to traefik subchart)
-    service:
-      type: LoadBalancer
-    ingressClass:
-      enabled: true
-      name: dify-traefik
-      isDefaultClass: false
-    dashboard:
-      enabled: false
-    gateway:
-      enabled: false   # Disable Gateway API (CRD conflict with existing)
+    enabled: true      # Enable Traefik Ingress Controller in dify namespace
 
+# External URL Configuration
+# Note: external.host は不要（相対パスまたはHostヘッダー由来で動作）
+# 固定IP依存を避けるため、Ingress経由でアクセス可能なURLは自動判定される
 external:
-  scheme: ""           # required (e.g. https)
-  host: ""             # required (LB IP or DNS)
+  scheme: "https"   # Default: https (optional)
+  host: ""          # optional (未指定でOK、相対パスで動作)
 
+# Images
 images:
+  # 共通タグ（web/api/workerは通常同じバージョンを使用）
+  tag: "1.11.4"       # Default: 1.11.4 (override via --set images.tag=...)
   web:
-    repository: ""     # required (e.g. langgenius/dify-web)
-    tag: ""            # required (e.g. 1.11.4)
+    repository: "langgenius/dify-web"
+    tag: ""            # Default: images.tag を使用（個別指定可: --set images.web.tag=...）
   api:
-    repository: ""     # required (e.g. langgenius/dify-api)
-    tag: ""            # required (e.g. 1.11.4)
+    repository: "langgenius/dify-api"
+    tag: ""            # Default: images.tag を使用（個別指定可: --set images.api.tag=...）
   worker:
+    repository: "langgenius/dify-api"  # worker uses same image as api
+    tag: ""            # Default: images.tag を使用（個別指定可: --set images.worker.tag=...）
   pluginDaemon:
-    repository: ""     # required (e.g. langgenius/dify-plugin-daemon)
-    tag: ""            # required (e.g. 1.11.4)
-    repository: ""     # required (e.g. langgenius/dify-api)
-    tag: ""            # required (e.g. 1.11.4)
+    repository: "langgenius/dify-plugin-daemon"
+    tag: "0.5.3-local"  # Default: 0.5.3-local (override via --set images.pluginDaemon.tag=...)
 
+# Secrets
+# Note: Secret は自動生成されます（lookup で既存値を優先）
+# values.yaml には固定値を書かない（IP のように毎回変動するものではなく「同一で使い回してOK」なキー類は自動生成）
 secrets:
-  # Note: Secret は自動生成されます（lookup で既存値を優先）
-  # values.yaml には固定値を書かない（IP のように毎回変動するものではなく「同一で使い回してOK」なキー類は自動生成）
-  openaiApiKey: ""     # optional (OpenAI API key)
+  openaiApiKey: ""     # optional (OpenAI API key, set via --set secrets.openaiApiKey=...)
 
+# Storage Configuration
+storage:
+  storageClassName: "nutanix-volume"  # Default: nutanix-volume (Nutanix CSI)
+
+# PostgreSQL Configuration
+postgresql:
+  enabled: true
+  image:
+    tag: "16"          # postgres:16 (公式イメージ)
+  persistence:
+    size: "20Gi"       # Default: 20Gi (adjust as needed)
+  auth:
+    username: "dify"    # Default: dify
+    database: "dify"    # Default: dify
+    # password は Secret で自動生成（lookup で既存値を優先）
+
+# Redis Configuration
+redis:
+  enabled: true
+  image:
+    tag: "7"           # redis:7 (公式イメージ)
+  persistence:
+    size: "8Gi"        # Default: 8Gi (adjust as needed)
+    # password は Secret で自動生成（lookup で既存値を優先）
+
+# Weaviate Configuration
+weaviate:
+  enabled: true
+  image:
+    tag: "1.25.0"      # semitechnologies/weaviate:1.25.0 (公式推奨タグ)
+  persistence:
+    size: "50Gi"       # Default: 50Gi (adjust as needed)
+    storageClass: ""   # optional, defaults to storage.storageClassName if empty
+
+# Dify Configuration
 dify:
   # Marketplace configuration
   marketplace:
     enabled: false     # Enable marketplace (set via --set dify.marketplace.enabled=true)
     apiUrl: ""         # Marketplace API URL (set via --set dify.marketplace.apiUrl=https://marketplace.dify.ai)
-
-storage:
-  storageClassName: "" # required (e.g. nutanix-volume)
-
-postgresql:
-  enabled: true
-  image:
-    tag: "16"          # bitnami/postgresql:16
-  persistence:
-    size: ""           # required (e.g. 20Gi)
-  auth:
-    username: ""       # required (e.g. dify)
-    password: ""        # required - MUST BE FIXED (not randomly generated)
-                       # PostgreSQL stores the password in PVC on first initialization.
-                       # If you change this password, you must delete the PVC first:
-                       #   kubectl delete pvc -n dify data-dify-postgresql-0
-                       # Otherwise, authentication will fail because PostgreSQL will use the old password.
-    database: ""       # required (e.g. dify)
-  secret:
-    name: "dify-postgresql"      # Secret name for PostgreSQL credentials
-    usernameKey: "postgres-username"  # Key name for username in Secret
-    passwordKey: "postgres-password" # Key name for password in Secret
-    databaseKey: "postgres-database" # Key name for database name in Secret
-
-redis:
-  enabled: true
-  image:
-    tag: "7.2"         # bitnami/redis:7.2
-  persistence:
-    size: ""           # required (e.g. 8Gi)
-  auth:
-    password: ""       # optional
-
-pluginDaemon:
-  redis:
-    host: "dify-redis-master"  # Redis Service name
-    port: "6379"               # Redis port
-    authEnabled: false         # Enable Redis authentication
-    existingSecret: ""         # Secret name for Redis password (if authEnabled is true)
-    passwordKey: "password"    # Key name for password in Secret (if authEnabled is true)
-
-weaviate:
-  enabled: true
-  service:
-    type: ClusterIP    # ClusterIP is sufficient (no external access needed)
-  grpcService:
-    type: ClusterIP    # gRPC service should also be ClusterIP (no external access needed)
-  persistence:
-    enabled: true
-    size: ""           # required (e.g. 50Gi)
-    storageClass: ""   # optional, defaults to storage.storageClassName if empty
-
-dify:
+  
+  # File Storage
   fileStorage:
     enabled: true
-    size: ""           # required (e.g. 20Gi)
-    storageClass: ""  # optional, defaults to nutanix-nfs if empty
-
+    size: "20Gi"       # Default: 20Gi (adjust as needed)
+    storageClass: ""   # optional, defaults to storage.storageClassName if empty

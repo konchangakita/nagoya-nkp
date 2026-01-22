@@ -1,55 +1,96 @@
+{{- if .Values.redis.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: data-dify-redis-master-0
+  name: data-dify-redis-0
   namespace: {{ .Release.Namespace }}
 spec:
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
-      storage: {{ required "redis.persistence.size is required" .Values.redis.persistence.size }}
-  storageClassName: {{ required "storage.storageClassName is required" .Values.storage.storageClassName }}
+      storage: {{ .Values.redis.persistence.size | default "8Gi" }}
+  storageClassName: {{ .Values.storage.storageClassName | default "nutanix-volume" }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: dify-redis-master
+  name: dify-redis
   namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: dify-redis-master
+      app: dify-redis
   template:
     metadata:
       labels:
-        app: dify-redis-master
+        app: dify-redis
     spec:
       containers:
         - name: redis
-          image: redis:7
-          args: ["redis-server", "--appendonly", "yes"]
+          image: redis:{{ .Values.redis.image.tag | default "7" }}
+          args:
+            - redis-server
+            - --appendonly
+            - "yes"
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dify-redis
+                  key: password
           ports:
             - containerPort: 6379
+              name: redis
           volumeMounts:
             - name: data
               mountPath: /data
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -a $(REDIS_PASSWORD) ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - redis-cli -a $(REDIS_PASSWORD) ping
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: data-dify-redis-master-0
+            claimName: data-dify-redis-0
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: dify-redis-master
+  name: dify-redis
   namespace: {{ .Release.Namespace }}
 spec:
   type: ClusterIP
   selector:
-    app: dify-redis-master
+    app: dify-redis
   ports:
     - port: 6379
       targetPort: 6379
-
+      name: redis
+{{- end }}
