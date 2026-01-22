@@ -2,6 +2,25 @@
 
 Dify Community Edition を Kubernetes (Nutanix Kubernetes Platform) 上にデプロイするための Helm Chart です。
 
+## クイックスタート
+
+### デプロイ
+
+```bash
+# Helm Chart をデプロイ（デフォルト値を使用、最小限の指定のみ）
+helm upgrade --install dify ./dify -n dify --create-namespace
+```
+
+### 削除
+
+```bash
+# Helm release と namespace を削除
+helm uninstall dify -n dify
+kubectl delete namespace dify
+```
+
+詳細な設定やトラブルシューティングについては、以下のセクションを参照してください。
+
 ## 重要な注意事項
 
 ### データベースマイグレーション
@@ -46,10 +65,8 @@ Dify Community Edition を Kubernetes (Nutanix Kubernetes Platform) 上にデプ
 ### デプロイ
 
 ```bash
-# Namespace を作成（存在しない場合）
-kubectl create namespace dify
-
 # Helm Chart をデプロイ（デフォルト値を使用、最小限の指定のみ）
+# --create-namespace フラグにより、namespace が存在しない場合は自動的に作成されます
 helm upgrade --install dify ./dify -n dify --create-namespace
 
 # OpenAI APIを使用する場合のみ追加
