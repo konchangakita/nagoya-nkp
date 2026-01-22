@@ -76,8 +76,19 @@ spec:
               value: "http://dify-plugin-daemon:5002"
             - name: PLUGIN_DAEMON_API_URL
               value: "http://dify-plugin-daemon:5002"
+            # Marketplace configuration
+            {{- if and .Values.dify .Values.dify.marketplace .Values.dify.marketplace.enabled }}
+            - name: MARKETPLACE_ENABLED
+              value: "true"
+            {{- if .Values.dify.marketplace.apiUrl }}
             - name: MARKETPLACE_API_URL
-              value: "{{ include "dify.externalURL" . }}/console/api/plugins/marketplace"
+              value: {{ .Values.dify.marketplace.apiUrl | quote }}
+            {{- else }}
+            # Default: internal service (fallback)
+            - name: MARKETPLACE_API_URL
+              value: "http://dify-api:5001/console/api/plugins/marketplace"
+            {{- end }}
+            {{- end }}
             - name: MARKETPLACE_URL
               value: "{{ include "dify.externalURL" . }}/plugins"
             # PostgreSQL

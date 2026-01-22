@@ -38,6 +38,12 @@ secrets:
   # values.yaml には固定値を書かない（IP のように毎回変動するものではなく「同一で使い回してOK」なキー類は自動生成）
   openaiApiKey: ""     # optional (OpenAI API key)
 
+dify:
+  # Marketplace configuration
+  marketplace:
+    enabled: false     # Enable marketplace (set via --set dify.marketplace.enabled=true)
+    apiUrl: ""         # Marketplace API URL (set via --set dify.marketplace.apiUrl=https://marketplace.dify.ai)
+
 storage:
   storageClassName: "" # required (e.g. nutanix-volume)
 
