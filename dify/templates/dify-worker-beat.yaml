@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dify-worker-beat
+  namespace: {{ .Release.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dify-worker-beat
+  template:
+    metadata:
+      labels:
+        app: dify-worker-beat
+    spec:
+      containers:
+        - name: dify-worker-beat
+          image: "{{ .Values.images.worker.repository | default "langgenius/dify-api" }}:{{ .Values.images.worker.tag | default .Values.images.tag | default "1.11.4" }}"
+          command:
+            - celery
+            - -A
+            - app.celery
+            - beat
+            - --loglevel=info
+          env:
+            # Dify Secret Key (公式の env 名)
+            - name: DIFY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-secrets
+                  key: difySecretKey
+{{- if .Values.secrets.openaiApiKey }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-secrets
+                  key: openaiApiKey
+{{- end }}
+            # External URLs (相対パスで動作、external.host不要)
+            # Note: 相対パスを使用することで、固定IP依存を避ける
+            # Ingress経由でアクセス可能なURLは自動判定される
+            # Dify Worker Beatは環境変数が空の場合、自動的に相対パスを使用する
+            - name: SERVER_URL
+              value: ""
+            - name: CONSOLE_URL
+              value: ""
+            - name: CONSOLE_API_URL
+              value: ""
+            - name: CONSOLE_WEB_URL
+              value: ""
+            - name: APP_WEB_URL
+              value: ""
+            - name: SERVICE_API_URL
+              value: ""
+            - name: FILES_URL
+              value: ""
+            # PostgreSQL
+            - name: DB_HOST
+              value: "dify-postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: dify-postgresql
+                  key: postgres-username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dify-postgresql
+                  key: postgres-password
+            - name: DB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: dify-postgresql
+                  key: postgres-database
+            # Redis
+            - name: REDIS_HOST
+              value: "dify-redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: dify-redis
+                  key: password
+            # Weaviate
+            - name: VECTOR_STORE
+              value: "weaviate"
+            - name: WEAVIATE_ENDPOINT
+              value: "http://dify-weaviate:8080"
+            - name: WEAVIATE_HOST
+              value: "dify-weaviate"
+            - name: WEAVIATE_PORT
+              value: "8080"
+            - name: WEAVIATE_SCHEME
+              value: "http"
+            # Storage (Beatはファイルストレージを直接使用しないが、初期化時に必要)
+            - name: STORAGE_TYPE
+              value: "opendal"
+            - name: OPENDAL_SCHEME
+              value: "fs"
+            - name: OPENDAL_FS_ROOT
+              value: "/storage"
+          volumeMounts:
+            # Beatはファイルストレージを直接使用しないが、初期化時に/storageディレクトリが必要
+            # RWOの制約を回避するため、emptyDirを使用（実際のファイル操作はWorkerが行う）
+            - name: filestorage-temp
+              mountPath: /storage
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      volumes:
+        # Beatはファイルストレージを直接使用しないが、初期化時に/storageディレクトリが必要
+        # RWOの制約を回避するため、emptyDirを使用（実際のファイル操作はWorkerが行う）
+        - name: filestorage-temp
+          emptyDir: {}
