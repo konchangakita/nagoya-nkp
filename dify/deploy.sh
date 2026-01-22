@@ -20,7 +20,7 @@ Options:
 Notes:
   - KUBECONFIG 環境変数で対象クラスタを指定してください
   - Namespace dify が存在しない場合は自動作成します
-  - DIFY_SECRET_KEY 環境変数が未設定の場合は自動生成します
+  - Secret は自動生成されます（lookup で既存値を優先）
   - This script will install Traefik Ingress Controller in dify namespace first,
     then install Dify with the Traefik's LoadBalancer IP.
 EOF
@@ -87,14 +87,42 @@ get_dify_traefik_lb_ip() {
   exit 1
 }
 
-# Generate PostgreSQL password if not set
+# PostgreSQL password must be fixed (not randomly generated)
+# This ensures consistency across deployments, even when PVCs persist
+# If you need to change the password, you must delete the PVC first
 if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
-  export POSTGRES_PASSWORD="$(openssl rand -base64 16 | tr -d "=+/" | cut -c1-16)"
+  echo "ERROR: POSTGRES_PASSWORD environment variable is required." >&2
+  echo "PostgreSQL password must be fixed to ensure consistency across deployments." >&2
+  echo "Please set POSTGRES_PASSWORD environment variable or export it in your shell." >&2
+  echo "" >&2
+  echo "Example:" >&2
+  echo "  export POSTGRES_PASSWORD='your-fixed-password'" >&2
+  echo "  $0 --image-tag 1.11.4" >&2
+  echo "" >&2
+  echo "Note: If you change POSTGRES_PASSWORD, you must delete the PVC first:" >&2
+  echo "  kubectl delete pvc -n dify data-dify-postgresql-0" >&2
+  exit 1
 fi
+
+# Check if PVC exists and warn if password might be different
+check_postgresql_pvc() {
+  local pvc_name="data-dify-postgresql-0"
+  if kubectl get pvc "${pvc_name}" -n dify >/dev/null 2>&1; then
+    echo "WARNING: PostgreSQL PVC (${pvc_name}) already exists." >&2
+    echo "If the password in the PVC differs from POSTGRES_PASSWORD, authentication will fail." >&2
+    echo "To change the password, delete the PVC first:" >&2
+    echo "  kubectl delete pvc -n dify ${pvc_name}" >&2
+    echo "" >&2
+    echo "Continuing with deployment (assuming password matches)..." >&2
+  fi
+}
 
 # Set defaults for PostgreSQL/Redis/Weaviate
 POSTGRES_USERNAME="${POSTGRES_USERNAME:-dify}"
 POSTGRES_DATABASE="${POSTGRES_DATABASE:-dify}"
+
+# Check PVC before deployment
+check_postgresql_pvc
 REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 POSTGRES_SIZE="${POSTGRES_SIZE:-20Gi}"
 REDIS_SIZE="${REDIS_SIZE:-8Gi}"
@@ -118,14 +146,15 @@ helm upgrade --install dify "${CHART_DIR}" -n dify \
   --set expose.path=/ \
   --set external.scheme=https \
   --set external.host=placeholder \
-  --set secrets.difySecretKey="${DIFY_SECRET_KEY}" \
   --set secrets.openaiApiKey="${openai_api_key}" \
-  --set images.web.repository=langgenius/dify-web \
-  --set images.web.tag="${image_tag}" \
-  --set images.api.repository=langgenius/dify-api \
-  --set images.api.tag="${image_tag}" \
-  --set images.worker.repository=langgenius/dify-api \
-  --set images.worker.tag="${image_tag}" \
+        --set images.web.repository=langgenius/dify-web \
+        --set images.web.tag="${image_tag}" \
+        --set images.api.repository=langgenius/dify-api \
+        --set images.api.tag="${image_tag}" \
+        --set images.worker.repository=langgenius/dify-api \
+        --set images.worker.tag="${image_tag}" \
+        --set images.pluginDaemon.repository=langgenius/dify-plugin-daemon \
+        --set images.pluginDaemon.tag="0.5.3-local" \
   --set storage.storageClassName=nutanix-volume \
   --set postgresql.auth.username="${POSTGRES_USERNAME}" \
   --set postgresql.auth.password="${POSTGRES_PASSWORD}" \
@@ -169,14 +198,15 @@ helm upgrade dify "${CHART_DIR}" -n dify \
   --set expose.path=/ \
   --set external.scheme=https \
   --set external.host="${external_host}" \
-  --set secrets.difySecretKey="${DIFY_SECRET_KEY}" \
   --set secrets.openaiApiKey="${openai_api_key}" \
-  --set images.web.repository=langgenius/dify-web \
-  --set images.web.tag="${image_tag}" \
-  --set images.api.repository=langgenius/dify-api \
-  --set images.api.tag="${image_tag}" \
-  --set images.worker.repository=langgenius/dify-api \
-  --set images.worker.tag="${image_tag}" \
+        --set images.web.repository=langgenius/dify-web \
+        --set images.web.tag="${image_tag}" \
+        --set images.api.repository=langgenius/dify-api \
+        --set images.api.tag="${image_tag}" \
+        --set images.worker.repository=langgenius/dify-api \
+        --set images.worker.tag="${image_tag}" \
+        --set images.pluginDaemon.repository=langgenius/dify-plugin-daemon \
+        --set images.pluginDaemon.tag="0.5.3-local" \
   --set storage.storageClassName=nutanix-volume \
   --set postgresql.auth.username="${POSTGRES_USERNAME}" \
   --set postgresql.auth.password="${POSTGRES_PASSWORD}" \

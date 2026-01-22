@@ -8,7 +8,11 @@ spec:
   rules:
     - http:
         paths:
-          # API系（console）
+          # =========================
+          # 1) API (dify-api)
+          # =========================
+
+          # Console API
           - path: /console/api
             pathType: Prefix
             backend:
@@ -17,7 +21,7 @@ spec:
                 port:
                   number: 5001
 
-          # API系（public）
+          # Public API
           - path: /api
             pathType: Prefix
             backend:
@@ -26,7 +30,7 @@ spec:
                 port:
                   number: 5001
 
-          # ★追加：OpenAPI/LLMアプリ系で使うことが多い
+          # OpenAPI / LLM apps (often used)
           - path: /v1
             pathType: Prefix
             backend:
@@ -35,7 +39,7 @@ spec:
                 port:
                   number: 5001
 
-          # ★追加：アップロード/生成物など
+          # Files upload / generated artifacts
           - path: /files
             pathType: Prefix
             backend:
@@ -44,7 +48,41 @@ spec:
                 port:
                   number: 5001
 
-          # Web（最後に）
+          # =========================
+          # 2) Web UI routes (dify-web)
+          #    NOTE: Protect /plugins from being swallowed by /plugin
+          # =========================
+          - path: /plugins
+            pathType: Prefix
+            backend:
+              service:
+                name: dify-web
+                port:
+                  number: 80
+
+          # =========================
+          # 3) Plugin Daemon (dify-plugin-daemon)
+          #    NOTE: Make /plugin strict to avoid matching /plugins
+          # =========================
+          - path: /plugin
+            pathType: Exact
+            backend:
+              service:
+                name: dify-plugin-daemon
+                port:
+                  number: 5002
+
+          - path: /plugin/
+            pathType: Prefix
+            backend:
+              service:
+                name: dify-plugin-daemon
+                port:
+                  number: 5002
+
+          # =========================
+          # 4) Web (catch-all)
+          # =========================
           - path: /
             pathType: Prefix
             backend:

@@ -25,10 +25,32 @@ spec:
       containers:
         - name: dify-api
           image: "{{ required "images.api.repository is required" .Values.images.api.repository }}:{{ required "images.api.tag is required" .Values.images.api.tag }}"
-          envFrom:
-            - secretRef:
-                name: dify-secrets
           env:
+            # Dify Secret Key (公式の env 名)
+            - name: DIFY_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-secrets
+                  key: difySecretKey
+            # Plugin Daemon Key (公式の env 名)
+            - name: PLUGIN_DAEMON_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-secrets
+                  key: pluginDaemonKey
+            # Inner API Key for Plugin (公式の env 名)
+            - name: INNER_API_KEY_FOR_PLUGIN
+              valueFrom:
+                secretKeyRef:
+                  name: dify-secrets
+                  key: difyInnerApiKey
+{{- if .Values.secrets.openaiApiKey }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-secrets
+                  key: openaiApiKey
+{{- end }}
             # Note: MIGRATION_ENABLED は false に設定（Job で migration を実行するため）
             # upgrade_db() は exit code を返さず危険なため使用しない
             - name: MIGRATION_ENABLED
@@ -47,17 +69,37 @@ spec:
               value: "{{ include "dify.externalURL" . }}/v1"
             - name: FILES_URL
               value: "{{ include "dify.externalURL" . }}/files"
+            # Plugin Daemon
+            # Note: PLUGIN_DAEMON_URL を内部Serviceに変更してSSL検証エラーを回避
+            # 外部公開用URLが必要な場合は別途環境変数を追加することを検討
+            - name: PLUGIN_DAEMON_URL
+              value: "http://dify-plugin-daemon:5002"
+            - name: PLUGIN_DAEMON_API_URL
+              value: "http://dify-plugin-daemon:5002"
+            - name: MARKETPLACE_API_URL
+              value: "{{ include "dify.externalURL" . }}/console/api/plugins/marketplace"
+            - name: MARKETPLACE_URL
+              value: "{{ include "dify.externalURL" . }}/plugins"
             # PostgreSQL
             - name: DB_HOST
               value: "dify-postgresql"
             - name: DB_PORT
               value: "5432"
             - name: DB_USERNAME
-              value: "{{ required "postgresql.auth.username is required" .Values.postgresql.auth.username }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.usernameKey | default "postgres-username" }}{{ else }}postgres-username{{ end }}
             - name: DB_PASSWORD
-              value: "{{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.passwordKey | default "postgres-password" }}{{ else }}postgres-password{{ end }}
             - name: DB_DATABASE
-              value: "{{ required "postgresql.auth.database is required" .Values.postgresql.auth.database }}"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.databaseKey | default "postgres-database" }}{{ else }}postgres-database{{ end }}
             # Redis
             - name: REDIS_HOST
               value: "dify-redis-master"

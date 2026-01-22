@@ -27,12 +27,16 @@ images:
     repository: ""     # required (e.g. langgenius/dify-api)
     tag: ""            # required (e.g. 1.11.4)
   worker:
+  pluginDaemon:
+    repository: ""     # required (e.g. langgenius/dify-plugin-daemon)
+    tag: ""            # required (e.g. 1.11.4)
     repository: ""     # required (e.g. langgenius/dify-api)
     tag: ""            # required (e.g. 1.11.4)
 
 secrets:
-  difySecretKey: ""    # required
-  openaiApiKey: ""     # optional
+  # Note: Secret は自動生成されます（lookup で既存値を優先）
+  # values.yaml には固定値を書かない（IP のように毎回変動するものではなく「同一で使い回してOK」なキー類は自動生成）
+  openaiApiKey: ""     # optional (OpenAI API key)
 
 storage:
   storageClassName: "" # required (e.g. nutanix-volume)
@@ -45,8 +49,17 @@ postgresql:
     size: ""           # required (e.g. 20Gi)
   auth:
     username: ""       # required (e.g. dify)
-    password: ""       # required
+    password: ""        # required - MUST BE FIXED (not randomly generated)
+                       # PostgreSQL stores the password in PVC on first initialization.
+                       # If you change this password, you must delete the PVC first:
+                       #   kubectl delete pvc -n dify data-dify-postgresql-0
+                       # Otherwise, authentication will fail because PostgreSQL will use the old password.
     database: ""       # required (e.g. dify)
+  secret:
+    name: "dify-postgresql"      # Secret name for PostgreSQL credentials
+    usernameKey: "postgres-username"  # Key name for username in Secret
+    passwordKey: "postgres-password" # Key name for password in Secret
+    databaseKey: "postgres-database" # Key name for database name in Secret
 
 redis:
   enabled: true
@@ -56,6 +69,14 @@ redis:
     size: ""           # required (e.g. 8Gi)
   auth:
     password: ""       # optional
+
+pluginDaemon:
+  redis:
+    host: "dify-redis-master"  # Redis Service name
+    port: "6379"               # Redis port
+    authEnabled: false         # Enable Redis authentication
+    existingSecret: ""         # Secret name for Redis password (if authEnabled is true)
+    passwordKey: "password"    # Key name for password in Secret (if authEnabled is true)
 
 weaviate:
   enabled: true

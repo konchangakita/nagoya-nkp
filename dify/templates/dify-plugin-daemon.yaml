@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dify-plugin-daemon
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: dify-plugin-daemon
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dify-plugin-daemon
+  template:
+    metadata:
+      labels:
+        app: dify-plugin-daemon
+    spec:
+      containers:
+        - name: dify-plugin-daemon
+          image: "{{ required "images.pluginDaemon.repository is required" .Values.images.pluginDaemon.repository }}:{{ required "images.pluginDaemon.tag is required" .Values.images.pluginDaemon.tag }}"
+          imagePullPolicy: IfNotPresent
+          env:
+            # Plugin Daemon specific (minimal configuration)
+            # Note: plugin-daemon does NOT use PostgreSQL directly
+            # It only depends on dify-api's internal API
+            - name: SERVER_PORT
+              value: "5002"
+            - name: SERVER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-secrets
+                  key: pluginDaemonKey
+            - name: DIFY_INNER_API_URL
+              value: "http://dify-api:5001"
+            - name: DIFY_INNER_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: dify-secrets
+                  key: difyInnerApiKey
+            - name: PLUGIN_DAEMON_URL
+              value: "{{ include "dify.externalURL" . }}/plugin"
+            - name: PLUGIN_REMOTE_INSTALLING_HOST
+              value: "{{ include "dify.externalURL" . }}"
+            - name: PLUGIN_REMOTE_INSTALLING_PORT
+              value: "443"
+            - name: PLUGIN_WORKING_PATH
+              value: "/storage/plugins"
+            # PostgreSQL (required by plugin-daemon code)
+            # Note: DB_PASSWORD is read from Secret to match the actual PostgreSQL password
+            - name: DB_HOST
+              value: "dify-postgresql"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.usernameKey | default "postgres-username" }}{{ else }}postgres-username{{ end }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.passwordKey | default "postgres-password" }}{{ else }}postgres-password{{ end }}
+            - name: DB_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.databaseKey | default "postgres-database" }}{{ else }}postgres-database{{ end }}
+            # Redis (required by plugin-daemon)
+            - name: REDIS_HOST
+              value: {{ if .Values.pluginDaemon }}{{ if .Values.pluginDaemon.redis }}{{ .Values.pluginDaemon.redis.host | default "dify-redis-master" }}{{ else }}dify-redis-master{{ end }}{{ else }}dify-redis-master{{ end }}
+            - name: REDIS_PORT
+              value: "{{ if .Values.pluginDaemon }}{{ if .Values.pluginDaemon.redis }}{{ .Values.pluginDaemon.redis.port | default "6379" }}{{ else }}6379{{ end }}{{ else }}6379{{ end }}"
+            {{- if and .Values.pluginDaemon .Values.pluginDaemon.redis .Values.pluginDaemon.redis.authEnabled }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.pluginDaemon.redis.existingSecret | default "dify-redis" }}
+                  key: {{ .Values.pluginDaemon.redis.passwordKey | default "password" }}
+            {{- end }}
+          ports:
+            - containerPort: 5002
+              name: http
+          volumeMounts:
+            {{- if .Values.dify.fileStorage.enabled }}
+            - name: filestorage
+              mountPath: /storage
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /health/check
+              port: 5002
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/check
+              port: 5002
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        {{- if .Values.dify.fileStorage.enabled }}
+        - name: filestorage
+          persistentVolumeClaim:
+            claimName: dify-filestorage
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dify-plugin-daemon
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app: dify-plugin-daemon
+spec:
+  type: ClusterIP
+  selector:
+    app: dify-plugin-daemon
+  ports:
+    - port: 5002
+      targetPort: 5002
+      protocol: TCP
+      name: http

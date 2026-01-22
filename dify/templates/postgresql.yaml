@@ -1,4 +1,17 @@
 apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+  namespace: {{ .Release.Namespace }}
+type: Opaque
+stringData:
+  {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.passwordKey | default "postgres-password" }}{{ else }}postgres-password{{ end }}: {{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}
+  {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.usernameKey | default "postgres-username" }}{{ else }}postgres-username{{ end }}: {{ required "postgresql.auth.username is required" .Values.postgresql.auth.username }}
+  {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.databaseKey | default "postgres-database" }}{{ else }}postgres-database{{ end }}: {{ required "postgresql.auth.database is required" .Values.postgresql.auth.database }}
+  # Compatibility: add 'password' key for backward compatibility (same value as postgres-password)
+  password: {{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: data-dify-postgresql-0
@@ -32,11 +45,20 @@ spec:
           image: postgres:16
           env:
             - name: POSTGRES_USER
-              value: {{ required "postgresql.auth.username is required" .Values.postgresql.auth.username }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.usernameKey | default "postgres-username" }}{{ else }}postgres-username{{ end }}
             - name: POSTGRES_PASSWORD
-              value: {{ required "postgresql.auth.password is required" .Values.postgresql.auth.password }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.passwordKey | default "postgres-password" }}{{ else }}postgres-password{{ end }}
             - name: POSTGRES_DB
-              value: {{ required "postgresql.auth.database is required" .Values.postgresql.auth.database }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.name | default "dify-postgresql" }}{{ else }}dify-postgresql{{ end }}
+                  key: {{ if .Values.postgresql.secret }}{{ .Values.postgresql.secret.databaseKey | default "postgres-database" }}{{ else }}postgres-database{{ end }}
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
           ports:
