@@ -86,7 +86,9 @@ spec:
               name: http
           volumeMounts:
             {{- if .Values.dify.fileStorage.enabled }}
-            - name: filestorage
+            # Note: RWOの制約を回避するため、plugin-daemonはemptyDirを使用
+            # 実際のプラグインファイルはAPIが管理し、plugin-daemonは実行環境として使用
+            - name: filestorage-temp
               mountPath: /storage
             {{- end }}
           readinessProbe:
@@ -114,9 +116,10 @@ spec:
               cpu: "500m"
       volumes:
         {{- if .Values.dify.fileStorage.enabled }}
-        - name: filestorage
-          persistentVolumeClaim:
-            claimName: dify-filestorage
+        # Note: RWOの制約を回避するため、plugin-daemonはemptyDirを使用
+        # 実際のプラグインファイルはAPIが管理し、plugin-daemonは実行環境として使用
+        - name: filestorage-temp
+          emptyDir: {}
         {{- end }}
 ---
 apiVersion: v1
