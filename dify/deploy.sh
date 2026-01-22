@@ -105,18 +105,10 @@ get_dify_traefik_lb_ip() {
 # PostgreSQL password must be fixed (not randomly generated)
 # This ensures consistency across deployments, even when PVCs persist
 # If you need to change the password, you must delete the PVC first
+# TODO: 一時的に強制指定。本番環境では環境変数から取得するように戻すこと
 if [[ -z "${POSTGRES_PASSWORD:-}" ]]; then
-  echo "ERROR: POSTGRES_PASSWORD environment variable is required." >&2
-  echo "PostgreSQL password must be fixed to ensure consistency across deployments." >&2
-  echo "Please set POSTGRES_PASSWORD environment variable or export it in your shell." >&2
-  echo "" >&2
-  echo "Example:" >&2
-  echo "  export POSTGRES_PASSWORD='your-fixed-password'" >&2
-  echo "  $0 --image-tag 1.11.4" >&2
-  echo "" >&2
-  echo "Note: If you change POSTGRES_PASSWORD, you must delete the PVC first:" >&2
-  echo "  kubectl delete pvc -n dify data-dify-postgresql-0" >&2
-  exit 1
+  export POSTGRES_PASSWORD='nutanix/4u'
+  echo "WARNING: POSTGRES_PASSWORD not set, using default: nutanix/4u" >&2
 fi
 
 # Check if PVC exists and warn if password might be different
