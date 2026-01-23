@@ -19,6 +19,21 @@ helm uninstall dify -n dify
 kubectl delete namespace dify
 ```
 
+### ブラウザ接続
+
+```bash
+# LoadBalancer の IP アドレスを確認
+kubectl get svc -n dify dify-traefik -o wide
+```
+
+**EXTERNAL-IP**列の値（例: `10.55.60.136`）をブラウザで開きます：
+
+```
+https://<EXTERNAL-IP>/
+```
+
+例: `https://10.55.60.136/`
+
 詳細な設定やトラブルシューティングについては、以下のセクションを参照してください。
 
 ## 重要な注意事項
