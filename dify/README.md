@@ -11,22 +11,18 @@ Dify Community Edition を Kubernetes (Nutanix Kubernetes Platform) 上にデプ
 helm upgrade --install dify ./dify -n dify --create-namespace
 ```
 
-### 削除
-
-```bash
-# Helm release と namespace を削除
-helm uninstall dify -n dify
-kubectl delete namespace dify
-```
-
 ### ブラウザ接続
 
 ```bash
 # LoadBalancer の IP アドレスを確認
 kubectl get svc -n dify dify-traefik -o wide
+
+# 出力例
+NAME           TYPE           CLUSTER-IP       EXTERNAL-IP    PORT(S)                      AGE    SELECTOR
+dify-traefik   LoadBalancer   10.102.243.134   10.55.60.136   80:30824/TCP,443:31389/TCP   136m   app=dify-traefik
 ```
 
-**EXTERNAL-IP**列の値（例: `10.55.60.136`）をブラウザで開きます：
+**EXTERNAL-IP**列の値をブラウザで開きます：
 
 ```
 https://<EXTERNAL-IP>/
@@ -34,7 +30,14 @@ https://<EXTERNAL-IP>/
 
 例: `https://10.55.60.136/`
 
-詳細な設定やトラブルシューティングについては、以下のセクションを参照してください。
+
+### 削除
+
+```bash
+# Helm release と namespace を削除
+helm uninstall dify -n dify
+kubectl delete namespace dify
+```
 
 ## 重要な注意事項
 
